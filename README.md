@@ -10,6 +10,27 @@ Check out [the Moonlight wiki](https://github.com/moonlight-stream/moonlight-doc
 
 [![Moonlight for iOS and tvOS](https://moonlight-stream.org/images/App_Store_Badge_135x40.svg)](https://apps.apple.com/us/app/moonlight-game-streaming/id1000551566)
 
+## About this fork
+
+> [!NOTE]
+> This is a personal fork (`daniel-zn/danielzn-moonlight-ios`, default branch `main`), an iPhone app called
+> **Artemis**, made to pair with [daniel-zn/danielzn-Apollo](https://github.com/daniel-zn/danielzn-Apollo) and to
+> match the macOS client in [daniel-zn/danielzn-moonlight-qt](https://github.com/daniel-zn/danielzn-moonlight-qt).
+> It doesn't follow upstream updates. It's not affiliated with Moonlight, nor with the Artemis Android client.
+
+Changes from upstream so far:
+
+- Named Artemis (bundle `com.danielzn.artemis`), iPhone only, iOS 18 or later. The Xcode target, the built
+  `Moonlight.app` and the code keep upstream's names.
+- Uses the scene lifecycle (`Limelight/SceneDelegate.m`): apps built with the iOS 27 SDK that don't are ended at launch.
+- `Scripts/testflight.sh` and `Scripts/asc.py` upload builds to TestFlight (internal testing only).
+- Build from the command line with `-scmProvider system`. If Xcode's own package download hangs on the OpenSSL
+  binary, download its zip once into `~/Library/Caches/org.swift.swiftpm/artifacts/` under the URL-derived name
+  SwiftPM uses (`https___github_com_krzyzanowskim_OpenSSL_releases_download_<version>_OpenSSL_xcframework_zip`).
+
+Planned: microphone passthrough to Apollo (as in the macOS client) and a SwiftUI interface that matches the macOS
+client's screens and wording.
+
 ## Building
 * Install Xcode from the [App Store page](https://apps.apple.com/us/app/xcode/id497799835)
 * Run `git clone --recursive https://github.com/moonlight-stream/moonlight-ios.git`
