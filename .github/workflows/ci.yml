@@ -25,9 +25,6 @@ jobs:
           - scheme: Moonlight
             sdk: iphonesimulator
             platform: iOS
-          - scheme: Moonlight TV
-            sdk: appletvsimulator
-            platform: tvOS
 
     steps:
       - name: Checkout

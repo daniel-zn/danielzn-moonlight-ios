@@ -7,7 +7,6 @@
 //
 
 #import "StreamFrameViewController.h"
-#import "MainFrameViewController.h"
 #import "VideoDecoderRenderer.h"
 #import "StreamManager.h"
 #import "ControllerSupport.h"
@@ -46,19 +45,11 @@
     StreamView *_streamView;
     UIScrollView *_scrollView;
     BOOL _userIsInteracting;
+    BOOL _exiting;
     CGSize _keyboardSize;
     
 #if !TARGET_OS_TV
     UIScreenEdgePanGestureRecognizer *_exitSwipeRecognizer;
-#endif
-}
-
-- (void)viewDidAppear:(BOOL)animated
-{
-    [super viewDidAppear:animated];
-    
-#if !TARGET_OS_TV
-    [[self revealViewController] setPrimaryViewController:self];
 #endif
 }
 
@@ -79,9 +70,17 @@
 {
     [super viewDidLoad];
     
-    [self.navigationController setNavigationBarHidden:YES animated:YES];
+    // The stream is laid out landscape: it's presented landscape even when the
+    // phone is upright, and the view may still have the portrait size here.
+    CGRect streamFrame = self.view.bounds;
+    if (streamFrame.size.height > streamFrame.size.width) {
+        streamFrame.size = CGSizeMake(streamFrame.size.height, streamFrame.size.width);
+    }
     
     [UIApplication sharedApplication].idleTimerDisabled = YES;
+    
+    // The gray the stream started on in the old storyboard, until video shows
+    self.view.backgroundColor = [UIColor colorWithWhite:0.333 alpha:1.0];
     
     _settings = [[[DataManager alloc] init] getSettings];
     
@@ -91,7 +90,7 @@
     [_stageLabel sizeToFit];
     _stageLabel.textAlignment = NSTextAlignmentCenter;
     _stageLabel.textColor = [UIColor whiteColor];
-    _stageLabel.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2);
+    _stageLabel.center = CGPointMake(streamFrame.size.width / 2, streamFrame.size.height / 2);
     
     _spinner = [[UIActivityIndicatorView alloc] init];
     [_spinner setUserInteractionEnabled:NO];
@@ -102,12 +101,12 @@
 #endif
     [_spinner sizeToFit];
     [_spinner startAnimating];
-    _spinner.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height / 2 - _stageLabel.frame.size.height - _spinner.frame.size.height);
+    _spinner.center = CGPointMake(streamFrame.size.width / 2, streamFrame.size.height / 2 - _stageLabel.frame.size.height - _spinner.frame.size.height);
     
     _controllerSupport = [[ControllerSupport alloc] initWithConfig:self.streamConfig delegate:self];
     _inactivityTimer = nil;
     
-    _streamView = [[StreamView alloc] initWithFrame:self.view.frame];
+    _streamView = [[StreamView alloc] initWithFrame:streamFrame];
     [_streamView setupStreamView:_controllerSupport interactionDelegate:self config:self.streamConfig];
     
 #if TARGET_OS_TV
@@ -149,7 +148,7 @@
     [_tipLabel sizeToFit];
     _tipLabel.textColor = [UIColor whiteColor];
     _tipLabel.textAlignment = NSTextAlignmentCenter;
-    _tipLabel.center = CGPointMake(self.view.frame.size.width / 2, self.view.frame.size.height * 0.9);
+    _tipLabel.center = CGPointMake(streamFrame.size.width / 2, streamFrame.size.height * 0.9);
     
     _streamMan = [[StreamManager alloc] initWithConfig:self.streamConfig
                                             renderView:_streamView
@@ -188,7 +187,7 @@
     
     // Only enable scroll and zoom in absolute touch mode
     if (_settings.absoluteTouchMode) {
-        _scrollView = [[UIScrollView alloc] initWithFrame:self.view.frame];
+        _scrollView = [[UIScrollView alloc] initWithFrame:streamFrame];
 #if !TARGET_OS_TV
         [_scrollView.panGestureRecognizer setMinimumNumberOfTouches:2];
 #endif
@@ -215,18 +214,25 @@
     return _streamView;
 }
 
-- (void)willMoveToParentViewController:(UIViewController *)parent {
-    // Only cleanup when we're being destroyed
-    if (parent == nil) {
-        [_controllerSupport cleanup];
-        [UIApplication sharedApplication].idleTimerDisabled = NO;
-        [_streamMan stopStream];
-        if (_inactivityTimer != nil) {
-            [_inactivityTimer invalidate];
-            _inactivityTimer = nil;
-        }
-        [[NSNotificationCenter defaultCenter] removeObserver:self];
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    
+    // Keep the overlays centered if the view's size changes after loading
+    CGSize size = self.view.bounds.size;
+    _stageLabel.center = CGPointMake(size.width / 2, size.height / 2);
+    _spinner.center = CGPointMake(size.width / 2, size.height / 2 - _stageLabel.frame.size.height - _spinner.frame.size.height);
+    _tipLabel.center = CGPointMake(size.width / 2, size.height * 0.9);
+}
+
+- (void)cleanupStream {
+    [_controllerSupport cleanup];
+    [UIApplication sharedApplication].idleTimerDisabled = NO;
+    [_streamMan stopStream];
+    if (_inactivityTimer != nil) {
+        [_inactivityTimer invalidate];
+        _inactivityTimer = nil;
     }
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 #if 0
@@ -306,13 +312,33 @@
 }
 
 - (void) returnToMainFrame {
+    // Several things can end the stream at once (an error and backgrounding)
+    if (_exiting) {
+        return;
+    }
+    _exiting = YES;
+    
     // Reset display mode back to default
     [self updatePreferredDisplayMode:NO];
     
     [_statsUpdateTimer invalidate];
     _statsUpdateTimer = nil;
     
-    [self.navigationController popToRootViewControllerAnimated:YES];
+    [self cleanupStream];
+    
+    // Dismiss through the presenter so an alert we're showing goes too
+    void (^onExit)(void) = self.onExit;
+    UIViewController* presenter = self.presentingViewController;
+    if (presenter != nil) {
+        [presenter dismissViewControllerAnimated:YES completion:^{
+            if (onExit != nil) {
+                onExit();
+            }
+        }];
+    }
+    else if (onExit != nil) {
+        onExit();
+    }
 }
 
 // This will fire if the user opens control center or gets a low battery message
@@ -404,7 +430,7 @@
         
         if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
             title = @"Connection Error";
-            message = @"Your device's network connection is blocking Moonlight. Streaming may not work while connected to this network.";
+            message = @"Your device's network connection is blocking Artemis. Streaming may not work while connected to this network.";
         }
         else {
             switch (errorCode) {
@@ -500,7 +526,7 @@
             message = [message stringByAppendingString:[NSString stringWithFormat:@"\n\nCheck your firewall and port forwarding rules for port(s):\n%s", failingPorts]];
         }
         if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
-            message = [message stringByAppendingString:@"\n\nYour device's network connection is blocking Moonlight. Streaming may not work while connected to this network."];
+            message = [message stringByAppendingString:@"\n\nYour device's network connection is blocking Artemis. Streaming may not work while connected to this network."];
         }
         
         UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Connection Failed"
@@ -700,6 +726,19 @@
 }
 
 - (BOOL)shouldAutorotate {
+    return YES;
+}
+
+// The stream is landscape; it's presented that way even if the phone is upright.
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskLandscape;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+    return UIInterfaceOrientationLandscapeRight;
+}
+
+- (BOOL)prefersStatusBarHidden {
     return YES;
 }
 

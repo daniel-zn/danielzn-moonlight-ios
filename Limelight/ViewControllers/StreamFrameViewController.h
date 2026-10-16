@@ -20,6 +20,8 @@
 @interface StreamFrameViewController : UIViewController <ConnectionCallbacks, ControllerSupportDelegate, UserInteractionDelegate, UIScrollViewDelegate>
 #endif
 @property (nonatomic) StreamConfiguration* streamConfig;
+/// Called once the stream has ended and the view has been dismissed.
+@property (nonatomic, copy) void (^onExit)(void);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 

@@ -5,3 +5,4 @@
 Build
 DerivedData
 build/
+!Moonlight.xcodeproj/xcshareddata/xcschemes/*.xcscheme

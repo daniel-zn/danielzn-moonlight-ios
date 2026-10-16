@@ -20,16 +20,25 @@ Check out [the Moonlight wiki](https://github.com/moonlight-stream/moonlight-doc
 
 Changes from upstream so far:
 
-- Named Artemis (bundle `com.danielzn.artemis`), iPhone only, iOS 18 or later. The Xcode target, the built
-  `Moonlight.app` and the code keep upstream's names.
-- Uses the scene lifecycle (`Limelight/SceneDelegate.m`): apps built with the iOS 27 SDK that don't are ended at launch.
+- Named Artemis (bundle `com.danielzn.artemis`), iPhone only, iOS 26 or later. The Xcode target, the built
+  `Moonlight.app` and the code keep upstream's names. No Apple TV target.
+- A native SwiftUI interface with Liquid Glass (`Artemis/`), in the macOS client's screens and wording: Computers
+  (a row per PC with its status: tap to open its games, pair or wake it), the pairing PIN, Games (box art, a Running
+  badge, Resume and End Game), and Settings in the Mac's sections. Upright or in landscape; the stream itself is
+  landscape. It replaces the storyboards, `MainFrameViewController`, the settings screen and `SWRevealViewController`:
+  their logic is in `Artemis/Model/ComputerStore.swift` and `Artemis/Bridge/ArtemisBridge.m`. The streaming core
+  (`Limelight/Stream`, `Limelight/Input`, `StreamFrameViewController`) is upstream's, presented full screen.
+- A new app icon (`Artemis/AppIcon.icon`, Icon Composer).
+- UI tests with screenshots of every screen (`ArtemisUITests`, `Scripts/ui-tests.sh`): upright and landscape,
+  default and largest accessibility text, light and dark, against stand-in PCs (`-ArtemisDemo YES`).
+- Uses the scene lifecycle (`Artemis/App/SceneDelegate.swift`): apps built with the iOS 27 SDK that don't are ended at
+  launch.
 - `Scripts/testflight.sh` and `Scripts/asc.py` upload builds to TestFlight (internal testing only).
 - Build from the command line with `-scmProvider system`. If Xcode's own package download hangs on the OpenSSL
   binary, download its zip once into `~/Library/Caches/org.swift.swiftpm/artifacts/` under the URL-derived name
   SwiftPM uses (`https___github_com_krzyzanowskim_OpenSSL_releases_download_<version>_OpenSSL_xcframework_zip`).
 
-Planned: microphone passthrough to Apollo (as in the macOS client) and a SwiftUI interface that matches the macOS
-client's screens and wording.
+Planned: microphone passthrough to Apollo (as in the macOS client).
 
 ## Building
 * Install Xcode from the [App Store page](https://apps.apple.com/us/app/xcode/id497799835)
@@ -39,7 +48,7 @@ client's screens and wording.
 * To run on a real device, you will need to locally modify the signing options:
     * Click on "Moonlight" at the top of the left sidebar
     * Click on the "Signing & Capabilities" tab
-    * Under "Targets", select "Moonlight" (for iOS/iPadOS) or "Moonlight TV" (for tvOS)
+    * Under "Targets", select "Moonlight"
     * In the "Team" dropdown, select your name. If your name doesn't appear, you may need to sign into Xcode with your Apple account.
     * Change the "Bundle Identifier" to something different. You can add your name or some random letters to make it unique.
     * Now you can select your Apple device in the top bar as a target and click the Play button to run.

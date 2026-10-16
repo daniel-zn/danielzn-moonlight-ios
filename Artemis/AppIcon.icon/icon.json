@@ -1,0 +1,26 @@
+{
+  "fill" : {
+    "solid" : "srgb:0.04706,0.17647,0.35294,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "artemis.png",
+          "name" : "Artemis"
+        }
+      ],
+      "lighting" : "combined",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}
