@@ -71,7 +71,7 @@
         // We can't directly identify Pascal, but we can look for HEVC Main10 which was added in the same generation.
         NSString* codecSupport = [serverInfoResp getStringTag:@"ServerCodecModeSupport"];
         if (codecSupport == nil || !([codecSupport intValue] & 0x200)) {
-            [_callbacks launchFailed:@"Your host PC's GPU doesn't support streaming video resolutions over 4K."];
+            [_callbacks launchFailed:@"Your host PC's GPU doesn't support resolutions over 4K."];
             return;
         }
     }

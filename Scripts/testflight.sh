@@ -63,6 +63,13 @@ cat > "$OUT/ExportOptions.plist" <<PLIST
 </plist>
 PLIST
 
+APP_IN_ARCHIVE="$OUT/Artemis.xcarchive/Products/Applications/Moonlight.app"
+# The UI font (Orbix, Artemis/Fonts) and its license ship in the app
+for file in Orbix-Regular.otf OFL.txt; do
+  [[ -f "$APP_IN_ARCHIVE/$file" ]] || { echo "FAIL: $file isn't in the app"; exit 1; }
+done
+echo "The app contains the Orbix font and its license"
+
 echo "Exporting ($DESTINATION)…"
 xcodebuild -exportArchive -archivePath "$OUT/Artemis.xcarchive" -exportOptionsPlist "$OUT/ExportOptions.plist" \
   -exportPath "$OUT/export" "${AUTH[@]}" > "$OUT/export.log" 2>&1 || { tail -30 "$OUT/export.log"; exit 1; }

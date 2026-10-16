@@ -16,8 +16,14 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
+        Typography.register()
+        Typography.styleNavigationBars()
+        NotificationCenter.default.addObserver(forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main) { _ in
+            Typography.styleNavigationBars()
+        }
 
-        let hosting = UIHostingController(rootView: RootView().environment(store))
+        // Outermost, so sheets and alerts' text without a style of its own take the app's typeface too
+        let hosting = UIHostingController(rootView: RootView().environment(store).artemisFont(.body))
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = hosting
         window.makeKeyAndVisible()
@@ -27,7 +33,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
         store.presentStream = { [weak hosting] config, onExit in
             guard let hosting else { return }
-            let stream = ArtemisBridge.streamViewController(with: config, onExit: onExit)
+            let stream: UIViewController
+            if DemoData.isEnabled && !DemoData.usesRealStream {
+                // A picture of a desktop that records the input instead of a stream
+                stream = DemoDesktopViewController(appName: config.appName ?? "Desktop", onExit: onExit)
+            } else {
+                stream = ArtemisBridge.streamViewController(with: config, onExit: onExit)
+            }
             var presenter: UIViewController = hosting
             while let presented = presenter.presentedViewController {
                 presenter = presented

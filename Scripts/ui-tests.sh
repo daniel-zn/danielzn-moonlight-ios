@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # UI tests with screenshots (ArtemisUITests): every screen with the demo PCs, upright and in
 # landscape, at the default and the largest accessibility text size, in light and dark mode;
-# then a stream start and exit, and the app icon on the home screen.
+# then a stream start and exit, the remote desktop's touch controls against the demo desktop
+# (DesktopTests: each gesture and the input events it sends), and the app icon on the home screen.
 #
 #   SIM=<udid> Scripts/ui-tests.sh            (or the booted Simulator)
 #   APPEARANCES="dark" Scripts/ui-tests.sh    one appearance only
 #   ONLY=testStreamStartsAndReturns Scripts/ui-tests.sh
 #   ONLY=HomeScreenIconTests Scripts/ui-tests.sh   the app icon on the home screen
+#   ONLY=DesktopTests Scripts/ui-tests.sh          the touch controls (or DesktopTests/testGesturesUpright)
 #   LIVE_HOST=<name>@<address> ONLY=LiveHostTests Scripts/ui-tests.sh   a real host: it shows up and
 #                                             opens (games, or a PIN that the test cancels)
 #
@@ -37,7 +39,7 @@ for appearance in ${APPEARANCES:-light dark}; do
   xcrun simctl ui "$SIM" appearance "$appearance"
   case "${ONLY:-}" in
     *Tests*) ONLY_ARGS=(-only-testing:"ArtemisUITests/$ONLY") ;;
-    "") ONLY_ARGS=(-only-testing:ArtemisUITests/ScreenshotTests -only-testing:ArtemisUITests/HomeScreenIconTests) ;;
+    "") ONLY_ARGS=(-only-testing:ArtemisUITests/ScreenshotTests -only-testing:ArtemisUITests/DesktopTests -only-testing:ArtemisUITests/HomeScreenIconTests) ;;
     *) ONLY_ARGS=(-only-testing:"ArtemisUITests/ScreenshotTests/$ONLY") ;;
   esac
   TEST_RUNNER_ARTEMIS_APPEARANCE="$appearance" TEST_RUNNER_ARTEMIS_SHOT_DIR="$OUT/shots" \

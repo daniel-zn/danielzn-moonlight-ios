@@ -57,7 +57,7 @@ struct BusyOverlay: View {
                 ProgressView()
                     .controlSize(.large)
                 Text(message)
-                    .font(.headline)
+                    .artemisFont(.headline)
                     .multilineTextAlignment(.center)
             }
             .padding(28)

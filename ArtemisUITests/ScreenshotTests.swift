@@ -25,9 +25,9 @@ final class ScreenshotTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
-    private func launch(size: String) -> XCUIApplication {
+    private func launch(size: String, arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", textSizes[size]!]
+        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", textSizes[size]!] + arguments
         app.launch()
         return app
     }
@@ -113,7 +113,8 @@ final class ScreenshotTests: XCTestCase {
     func testEveryScreenUprightLargeText() { sweep(size: "AX5", orientation: "portrait") }
     func testEveryScreenLandscapeLargeText() { sweep(size: "AX5", orientation: "landscape") }
 
-    /// Computers, Games (with the end-game dialog), pairing, Add PC, Settings and a settings page.
+    /// Computers, Apps (with the end-session dialog), the connected desktop, pairing, Add PC,
+    /// Settings and its pages.
     private func sweep(size: String, orientation orientationName: String) {
         do {
             do {
@@ -136,42 +137,58 @@ final class ScreenshotTests: XCTestCase {
                 sleep(1)
                 shot(app, "\(tag)-1-computers")
 
-                // Games: box art rows, Cyberpunk running with Resume / End Game
+                // Apps: artwork rows, Desktop active with Resume / End Session
                 enchilada.tap()
-                let running = app.buttons["game.Cyberpunk 2077"]
-                XCTAssertTrue(running.waitForExistence(timeout: 10), "\(tag): the games didn't open")
-                XCTAssertTrue(reveal(app.buttons["game.end"], in: app, timeout: 1), "\(tag): no End Game button")
-                XCTAssertTrue(app.staticTexts["game.running"].exists, "\(tag): no Running badge")
+                let running = app.buttons["game.Desktop"]
+                XCTAssertTrue(running.waitForExistence(timeout: 10), "\(tag): the apps didn't open")
+                XCTAssertTrue(reveal(app.buttons["game.end"], in: app, timeout: 1), "\(tag): no End Session button")
+                XCTAssertTrue(app.staticTexts["game.running"].exists, "\(tag): no Active badge")
+                XCTAssertEqual(app.staticTexts["game.running"].label, "Active", "\(tag): the badge isn't Active")
                 let resume = app.buttons["game.resume"]
                 XCTAssertTrue(resume.exists, "\(tag): no Resume button")
                 assertOnScreen(resume, in: app, tag)
                 assertOnScreen(app.buttons["game.end"], in: app, tag)
-                XCTAssertFalse(app.buttons["game.Baldur's Gate 3"].exists, "\(tag): a hidden game shows")
+                XCTAssertFalse(app.buttons["game.Old Virtual Display"].exists, "\(tag): a hidden app shows")
                 sleep(1)
-                shot(app, "\(tag)-2-games")
+                shot(app, "\(tag)-2-apps")
 
                 app.buttons["game.end"].tap()
-                XCTAssertTrue(app.buttons["End Game on PC"].firstMatch.waitForExistence(timeout: 5), "\(tag): no end-game confirmation")
+                let endAlert = app.alerts.firstMatch
+                XCTAssertTrue(endAlert.buttons["End Session"].waitForExistence(timeout: 5), "\(tag): no end-session confirmation")
+                XCTAssertTrue(endAlert.label.contains("End the session on ENCHILADA"), "\(tag): confirmation title \(endAlert.label)")
                 sleep(1)
-                shot(app, "\(tag)-3-end-game")
+                shot(app, "\(tag)-3-end-session")
                 dismissDialog(app)
                 sleep(1)
 
-                // Hidden games on request
-                let showHidden = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Show All Games, Including Hidden")).firstMatch
+                // The connected desktop (the demo's picture), with the control bar
+                running.tap()
+                let desktop = app.otherElements["desktop"]
+                XCTAssertTrue(desktop.waitForExistence(timeout: 10), "\(tag): the desktop didn't open")
+                let disconnect = app.buttons["bar.disconnect"]
+                if !disconnect.exists, app.buttons["bar.unfold"].exists { app.buttons["bar.unfold"].tap() }
+                XCTAssertTrue(disconnect.waitForExistence(timeout: 5), "\(tag): no control bar")
+                assertOnScreen(disconnect, in: app, tag)
+                sleep(1)
+                shot(app, "\(tag)-3b-desktop")
+                disconnect.tap()
+                // The menu's item (the bar's button has the same label)
+                app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Disconnect", "bar.disconnect")).firstMatch.tap()
+                XCTAssertTrue(running.waitForExistence(timeout: 10), "\(tag): didn't return to the apps")
+                sleep(1)
+
+                // Hidden apps on request
+                let showHidden = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Show All Apps, Including Hidden")).firstMatch
                 // The first tap can land while the dialog is still going away
                 for _ in 0..<3 where !showHidden.exists {
                     app.buttons["games.more"].tap()
                     _ = showHidden.waitForExistence(timeout: 2)
                 }
-                XCTAssertTrue(showHidden.waitForExistence(timeout: 5), "\(tag): no Show All Games item")
+                XCTAssertTrue(showHidden.waitForExistence(timeout: 5), "\(tag): no Show All Apps item")
                 if !showHidden.exists { print("[tree] \(app.debugDescription)"); shot(app, "\(tag)-debug-menu") }
                 showHidden.tap()
-                let hidden = app.buttons["game.Baldur's Gate 3"]
-                if !hidden.waitForExistence(timeout: 3) {
-                    app.swipeUp()
-                }
-                XCTAssertTrue(hidden.waitForExistence(timeout: 5), "\(tag): hidden game doesn't show")
+                let hidden = app.buttons["game.Old Virtual Display"]
+                XCTAssertTrue(reveal(hidden, in: app), "\(tag): hidden app doesn't show")
                 goBack(app)
 
                 // Pairing: the PIN, large, on one line
@@ -211,6 +228,15 @@ final class ScreenshotTests: XCTestCase {
                 goBack(app)
                 for section in ["audio", "keyboard", "controllers", "touch", "host", "general", "advanced"] {
                     XCTAssertTrue(reveal(app.buttons["settings.\(section)"], in: app, timeout: 1, inSheet: true), "\(tag): no \(section) section")
+                    if section == "touch" {
+                        // Touch & Pointer
+                        app.buttons["settings.touch"].tap()
+                        XCTAssertTrue(app.navigationBars["Touch & Pointer"].waitForExistence(timeout: 5), "\(tag): Touch & Pointer didn't open")
+                        XCTAssertTrue(reveal(app.sliders["settings.pointerSpeed"], in: app, timeout: 1, inSheet: true), "\(tag): no pointer speed")
+                        sleep(1)
+                        shot(app, "\(tag)-7b-settings-touch")
+                        goBack(app)
+                    }
                 }
                 app.buttons["settings.done"].tap()
                 XCTAssertTrue(app.buttons["computers.add"].waitForExistence(timeout: 5))
@@ -229,31 +255,28 @@ final class ScreenshotTests: XCTestCase {
         }
     }
 
-    /// Starting another game while one runs: confirm, end the running one, the stream view
-    /// opens in landscape (the phone stays upright), can't reach the demo host, and its
-    /// error's OK returns to the games list.
+    /// Opening another app while one is active: confirm, end the active one, the real stream
+    /// screen opens (with -ArtemisDemoRealStream YES) with its controls, can't reach the demo
+    /// host, and its error's OK returns to the apps list.
     func testStreamStartsAndReturns() {
-        let app = launch(size: "L")
+        let app = launch(size: "L", arguments: ["-ArtemisDemoRealStream", "YES"])
         XCUIDevice.shared.orientation = .portrait
         let enchilada = app.buttons["computer.ENCHILADA"]
         XCTAssertTrue(enchilada.waitForExistence(timeout: 15))
         enchilada.tap()
-        let elden = app.buttons["game.Elden Ring"]
-        XCTAssertTrue(elden.waitForExistence(timeout: 10))
-        elden.tap()
-        let quitAndStart = app.buttons["Quit It and Start Elden Ring"]
-        XCTAssertTrue(quitAndStart.waitForExistence(timeout: 5), "no quit-and-start confirmation")
-        shot(app, "\(appearance)-portrait-L-9-switch-game")
-        quitAndStart.tap()
+        let blender = app.buttons["game.Blender"]
+        XCTAssertTrue(blender.waitForExistence(timeout: 10))
+        blender.tap()
+        let endAndOpen = app.buttons["End It and Open Blender"]
+        XCTAssertTrue(endAndOpen.waitForExistence(timeout: 5), "no end-and-open confirmation")
+        shot(app, "\(appearance)-portrait-L-9-switch-app")
+        endAndOpen.tap()
 
-        // The stream view: landscape though the phone is upright
-        let starting = app.staticTexts["Starting Elden Ring..."]
+        // The stream screen, upright: the desktop on top, the controls under it
+        let starting = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Connecting to Blender")).firstMatch
         let failed = app.alerts.firstMatch
-        XCTAssertTrue(starting.waitForExistence(timeout: 10) || failed.waitForExistence(timeout: 1), "the stream didn't start")
-        // Frames are in the upright screen's coordinates: sideways text is taller than wide
-        if starting.exists {
-            XCTAssertGreaterThan(starting.frame.height, starting.frame.width, "the stream isn't landscape (\(starting.frame))")
-        }
+        XCTAssertTrue(starting.waitForExistence(timeout: 10) || failed.waitForExistence(timeout: 1), "the session didn't start")
+        XCTAssertTrue(app.buttons["bar.disconnect"].exists || failed.exists, "no control bar on the stream screen")
         XCTAssertEqual(XCUIDevice.shared.orientation, .portrait)
         shot(app, "\(appearance)-stream-starting")
 
@@ -261,12 +284,10 @@ final class ScreenshotTests: XCTestCase {
         shot(app, "\(appearance)-stream-error")
         failed.buttons["OK"].tap()
 
-        // Back on the games list, upright again; nothing runs any more
-        XCTAssertTrue(app.buttons["game.Elden Ring"].waitForExistence(timeout: 10), "didn't return to the games")
+        // Back on the apps list; nothing is active any more
+        XCTAssertTrue(app.buttons["game.Blender"].waitForExistence(timeout: 10), "didn't return to the apps")
         sleep(2)
-        let row = app.buttons["game.Elden Ring"].frame
-        XCTAssertGreaterThan(row.width, row.height, "the list didn't return upright (\(row))")
-        XCTAssertFalse(app.staticTexts["game.running"].exists, "Cyberpunk still shows as running")
-        shot(app, "\(appearance)-portrait-L-10-after-stream")
+        XCTAssertFalse(app.staticTexts["game.running"].exists, "Desktop still shows as active")
+        shot(app, "\(appearance)-portrait-L-10-after-session")
     }
 }

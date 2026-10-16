@@ -99,7 +99,7 @@
     if (![self verifyResponseStatus:pairResp]) {
         // GFE does not allow pairing while a server is busy, but Sunshine does. We give it a try and display the busy error if it fails.
         if ([state hasSuffix:@"_SERVER_BUSY"]) {
-            [self finishPairing:bgId forResponse:pairResp withFallbackError:@"You cannot pair while a previous session is still running on the host PC. Quit any running games or reboot the host PC, then try pairing again."];
+            [self finishPairing:bgId forResponse:pairResp withFallbackError:@"You can't pair while a session is still active on the host PC. End the active session or restart the host PC, then try pairing again."];
         }
         else {
             [self finishPairing:bgId forResponse:pairResp withFallbackError:@"Pairing was declined by the target."];

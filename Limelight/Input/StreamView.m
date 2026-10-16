@@ -14,6 +14,7 @@
 #import "RelativeTouchHandler.h"
 #import "AbsoluteTouchHandler.h"
 #import "KeyboardInputField.h"
+#import <AVFoundation/AVFoundation.h>
 
 static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
 
@@ -44,6 +45,32 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     BOOL hasUserInteracted;
     
     NSDictionary<NSString *, NSNumber *> *dictCodes;
+    
+    BOOL desktopControls;
+}
+
+- (void) useDesktopTouchHandler:(UIResponder*)handler {
+    touchHandler = handler;
+    desktopControls = YES;
+    [onScreenControls setLevel:OnScreenControlsLevelOff];
+}
+
+// Artemis: the view's size changes when the phone rotates, so the video layer follows it
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (streamAspectRatio <= 0) {
+        return;
+    }
+    CGSize videoSize = [self getVideoAreaSize];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    for (CALayer* layer in self.layer.sublayers) {
+        if ([layer isKindOfClass:[AVSampleBufferDisplayLayer class]]) {
+            layer.bounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
+            layer.position = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+        }
+    }
+    [CATransaction commit];
 }
 
 - (void) setupStreamView:(ControllerSupport*)controllerSupport
@@ -74,19 +101,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         self->touchHandler = [[RelativeTouchHandler alloc] initWithView:self];
     }
     
+    // Artemis: the remote desktop controls replace upstream's on-screen gamepad, so it stays
+    // off (and isn't handed to ControllerSupport's automatic mode, which would turn it back on
+    // when a controller or keyboard comes and goes).
     onScreenControls = [[OnScreenControls alloc] initWithView:self controllerSup:controllerSupport streamConfig:streamConfig];
-    OnScreenControlsLevel level = (OnScreenControlsLevel)[settings.onscreenControls integerValue];
-    if (settings.absoluteTouchMode) {
-        Log(LOG_I, @"On-screen controls disabled in absolute touch mode");
-        [onScreenControls setLevel:OnScreenControlsLevelOff];
-    }
-    else if (level == OnScreenControlsLevelAuto) {
-        [controllerSupport initAutoOnScreenControlMode:onScreenControls];
-    }
-    else {
-        Log(LOG_I, @"Setting manual on-screen controls level: %d", (int)level);
-        [onScreenControls setLevel:level];
-    }
+    [onScreenControls setLevel:OnScreenControlsLevelOff];
     
     // It would be nice to just use GCMouse on iOS 14+ and the older API on iOS 13
     // but unfortunately that isn't possible today. GCMouse doesn't recognize many
@@ -343,6 +362,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
 #endif
     
+    if (desktopControls) {
+        [touchHandler touchesBegan:touches withEvent:event];
+        return;
+    }
+    
     if (![onScreenControls handleTouchDownEvent:touches]) {
         // We still inform the touch handler even if we're going trigger the
         // keyboard activation gesture. This is important to ensure the touch
@@ -542,6 +566,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     
     hasUserInteracted = YES;
     
+    if (desktopControls) {
+        [touchHandler touchesMoved:touches withEvent:event];
+        return;
+    }
+    
     if (![onScreenControls handleTouchMovedEvent:touches]) {
         [touchHandler touchesMoved:touches withEvent:event];
     }
@@ -609,6 +638,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
 #endif
     
+    if (desktopControls) {
+        [touchHandler touchesEnded:touches withEvent:event];
+        return;
+    }
+    
     if (![onScreenControls handleTouchUpEvent:touches]) {
         [touchHandler touchesEnded:touches withEvent:event];
     }
@@ -645,6 +679,10 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     if (normalizedLocation.x != lastMouseX || normalizedLocation.y != lastMouseY || !isMouse) {
         if (lastMouseX != 0 || lastMouseY != 0 || !isMouse) {
             LiSendMousePositionEvent(normalizedLocation.x, normalizedLocation.y, videoSize.width, videoSize.height);
+            // Artemis: the trackpad's pointer continues from where a mouse left it
+            if (self.pointerMoved != nil && videoSize.width > 0 && videoSize.height > 0) {
+                self.pointerMoved(CGPointMake(normalizedLocation.x / videoSize.width, normalizedLocation.y / videoSize.height));
+            }
         }
         
         if (isMouse) {

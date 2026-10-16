@@ -22,15 +22,21 @@ Changes from upstream so far:
 
 - Named Artemis (bundle `com.danielzn.artemis`), iPhone only, iOS 26 or later. The Xcode target, the built
   `Moonlight.app` and the code keep upstream's names. No Apple TV target.
-- A native SwiftUI interface with Liquid Glass (`Artemis/`), in the macOS client's screens and wording: Computers
-  (a row per PC with its status: tap to open its games, pair or wake it), the pairing PIN, Games (box art, a Running
-  badge, Resume and End Game), and Settings in the Mac's sections. Upright or in landscape; the stream itself is
-  landscape. It replaces the storyboards, `MainFrameViewController`, the settings screen and `SWRevealViewController`:
+- A native SwiftUI interface with Liquid Glass (`Artemis/`), in the macOS client's screens, worded for a remote
+  desktop rather than games: Computers (a row per PC with its status: tap to open its apps, pair or wake it), the
+  pairing PIN, Apps (artwork, an Active badge, Resume and End Session), and Settings in the Mac's sections.
+- Touch controls for the remote desktop (`Artemis/Desktop/`, spec in [docs/TOUCH.md](docs/TOUCH.md)): trackpad and
+  direct modes, clicks, drags, two-finger scrolling, pinch to zoom, a movable Liquid Glass control bar, the keyboard
+  with a key row (Esc, Tab, sticky Ctrl/Alt/Win/Shift, arrows, F1–F12) and Windows shortcuts. Upright (the desktop on
+  top, a trackpad under it) or landscape (full screen).
+- The UI font is [Orbix](https://fontesk.com/orbix-font/) by Besign Foundry (`Artemis/Fonts/`, SIL Open Font License
+  1.1, `OFL.txt`), with SF Pro for digits and the characters it lacks. It replaces the storyboards, `MainFrameViewController`, the settings screen and `SWRevealViewController`:
   their logic is in `Artemis/Model/ComputerStore.swift` and `Artemis/Bridge/ArtemisBridge.m`. The streaming core
   (`Limelight/Stream`, `Limelight/Input`, `StreamFrameViewController`) is upstream's, presented full screen.
 - A new app icon (`Artemis/AppIcon.icon`, Icon Composer).
 - UI tests with screenshots of every screen (`ArtemisUITests`, `Scripts/ui-tests.sh`): upright and landscape,
-  default and largest accessibility text, light and dark, against stand-in PCs (`-ArtemisDemo YES`).
+  default and largest accessibility text, light and dark, against stand-in PCs (`-ArtemisDemo YES`), where
+  connecting opens a picture of a desktop that records the input each gesture sends (`DesktopTests`).
 - Uses the scene lifecycle (`Artemis/App/SceneDelegate.swift`): apps built with the iOS 27 SDK that don't are ended at
   launch.
 - `Scripts/testflight.sh` and `Scripts/asc.py` upload builds to TestFlight (internal testing only).

@@ -28,6 +28,12 @@
      interactionDelegate:(id<UserInteractionDelegate>)interactionDelegate
                   config:(StreamConfiguration*)streamConfig;
 - (void) showOnScreenControls;
+/// Artemis: finger touches go to the remote desktop controls (DesktopViewController) instead
+/// of upstream's touch handlers, on-screen gamepad and three-finger keyboard. Mice, pens and
+/// hardware keyboards stay with the StreamView.
+- (void) useDesktopTouchHandler:(UIResponder*)handler;
+/// Artemis: called with the pointer's position on the desktop (0–1) when a mouse moves it.
+@property (nonatomic, copy) void (^pointerMoved)(CGPoint normalized);
 - (OnScreenControlsLevel) getCurrentOscState;
 
 #if !TARGET_OS_TV

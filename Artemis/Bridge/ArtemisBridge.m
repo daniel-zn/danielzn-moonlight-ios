@@ -52,7 +52,7 @@
 
     if (![appListResp isStatusOk] || [appListResp getAppList] == nil) {
         Log(LOG_W, @"Failed to get applist: %@", appListResp.statusMessage);
-        return appListResp.statusMessage ?: @"The PC didn't send its games.";
+        return appListResp.statusMessage ?: @"The PC didn't send its apps.";
     }
 
     [self updateApplist:[appListResp getAppList] forHost:host];
@@ -170,7 +170,7 @@
     else {
         char blockedPorts[512];
         LiStringifyPortFlags(portTestResult, "\n", blockedPorts, sizeof(blockedPorts));
-        return [NSString stringWithFormat:@"Your current network connection seems to be blocking Artemis. Streaming may not work while connected to this network.\n\nThe following network ports were blocked:\n%s", blockedPorts];
+        return [NSString stringWithFormat:@"Your current network connection seems to be blocking Artemis. Connecting may not work while you're on this network.\n\nThe following network ports were blocked:\n%s", blockedPorts];
     }
 }
 
@@ -178,7 +178,7 @@
     unsigned int portTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443,
                                                             ML_PORT_FLAG_TCP_47984 | ML_PORT_FLAG_TCP_47989);
     if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
-        return [error stringByAppendingString:@"\n\nYour device's network connection is blocking Artemis. Streaming may not work while connected to this network."];
+        return [error stringByAppendingString:@"\n\nYour device's network connection is blocking Artemis. Connecting may not work while you're on this network."];
     }
     return error;
 }

@@ -3,7 +3,7 @@
 //  Artemis
 //
 //  The PCs list, as the Mac app's Computers window: a row per PC with its status;
-//  tapping opens its games, pairs it or wakes it.
+//  tapping opens its apps, pairs it or wakes it.
 //
 
 import SwiftUI
@@ -46,12 +46,14 @@ struct ComputersView: View {
                 ContentUnavailableView {
                     Label {
                         Text("Looking for computers…")
+                            .artemisFont(.title2)
                     } icon: {
                         Image(systemName: "desktopcomputer")
                             .symbolEffect(.pulse)
                     }
                 } description: {
                     Text("Artemis finds PCs running Apollo or Sunshine on your network. You can also add one with the + button.")
+                        .artemisFont(.callout)
                 } actions: {
                     Button("Add PC Manually") { showingAdd = true }
                         .buttonStyle(.glassProminent)
@@ -92,7 +94,7 @@ struct ComputersView: View {
             Button("Remove", role: .destructive) { store.remove(computer.id) }
             Button("Cancel", role: .cancel) {}
         } message: { computer in
-            Text("Are you sure you want to remove '\(computer.name)'? You'll need to pair with it again to stream from it.")
+            Text("Are you sure you want to remove '\(computer.name)'? You'll need to pair with it again to connect to it.")
         }
     }
 
@@ -100,8 +102,8 @@ struct ComputersView: View {
     private func menu(for computer: Computer) -> some View {
         switch computer.status {
         case .online where computer.isPaired:
-            Button("View Games", systemImage: "gamecontroller") { store.open(computer.id) }
-            Button("View All Games, Including Hidden", systemImage: "eye") {
+            Button("View Apps", systemImage: "square.grid.2x2") { store.open(computer.id) }
+            Button("View All Apps, Including Hidden", systemImage: "eye") {
                 store.showingHiddenGames.insert(computer.id)
                 store.open(computer.id)
             }
@@ -134,9 +136,9 @@ struct ComputerRow: View {
                 icon
                 VStack(alignment: .leading, spacing: 2) {
                     Text(computer.name)
-                        .font(.headline)
+                        .artemisFont(.headline)
                     Text(computer.statusLine)
-                        .font(.subheadline)
+                        .artemisFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -162,7 +164,7 @@ struct ComputerRow: View {
                 if computer.status == .online && !computer.isPaired {
                     badge("lock.fill", .orange)
                 } else if computer.runningGameName != nil {
-                    badge("play.fill", .green)
+                    badge("dot.radiowaves.left.and.right", .green)
                 }
             }
     }

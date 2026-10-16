@@ -3,7 +3,9 @@
 //  Artemis
 //
 //  Stand-in PCs for screenshots and UI tests (launch argument -ArtemisDemo YES):
-//  a paired PC with games, one running; an offline PC; a PC that isn't paired.
+//  a paired PC with apps, one active; an offline PC; a PC that isn't paired.
+//  Connecting opens a picture of a desktop that records the input (DemoDesktopViewController);
+//  with -ArtemisDemoRealStream YES it opens the real stream screen, which can't reach the PC.
 //  Nothing touches the network or the saved PCs in this mode.
 //
 
@@ -14,12 +16,16 @@ enum DemoData {
         UserDefaults.standard.bool(forKey: "ArtemisDemo")
     }
 
+    static var usesRealStream: Bool {
+        UserDefaults.standard.bool(forKey: "ArtemisDemoRealStream")
+    }
+
     static func makeHosts() -> [TemporaryHost] {
         let enchilada = host("ENCHILADA", uuid: "demo-enchilada", state: .online, paired: true, mac: "a8:a1:59:12:34:56")
         let games: [(String, String, Bool)] = [
-            ("1", "Cyberpunk 2077", false), ("2", "Elden Ring", false), ("3", "Hades II", false),
-            ("4", "Forza Horizon 5", false), ("5", "Balatro", false), ("6", "Desktop", false),
-            ("7", "Steam Big Picture", false), ("8", "Baldur's Gate 3", true),
+            ("1", "Desktop", false), ("2", "Visual Studio Code", false), ("3", "Blender", false),
+            ("4", "Photoshop", false), ("5", "Terminal", false), ("6", "File Explorer", false),
+            ("7", "Steam Big Picture", false), ("8", "Old Virtual Display", true),
         ]
         enchilada.appList = Set(games.map { app($0.0, $0.1, hidden: $0.2, host: enchilada) })
         enchilada.currentGame = "1"
@@ -65,7 +71,7 @@ enum DemoData {
         (#colorLiteral(red: 0.55, green: 0.3, blue: 0.75, alpha: 1), #colorLiteral(red: 0.1, green: 0.05, blue: 0.2, alpha: 1)),
     ]
 
-    /// A stand-in cover: a gradient with the title on it.
+    /// Stand-in artwork: a gradient with the name on it.
     static func boxArt(for game: Game) -> UIImage {
         let (top, bottom) = palettes[(Int(game.appID) ?? 0) % palettes.count]
         let size = CGSize(width: 300, height: 400)

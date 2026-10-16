@@ -43,7 +43,7 @@
     UILabel *_tipLabel;
     UIActivityIndicatorView *_spinner;
     StreamView *_streamView;
-    UIScrollView *_scrollView;
+    DesktopViewController *_desktop;
     BOOL _userIsInteracting;
     BOOL _exiting;
     CGSize _keyboardSize;
@@ -70,12 +70,8 @@
 {
     [super viewDidLoad];
     
-    // The stream is laid out landscape: it's presented landscape even when the
-    // phone is upright, and the view may still have the portrait size here.
+    // Upright or landscape: DesktopViewController lays the desktop out for either
     CGRect streamFrame = self.view.bounds;
-    if (streamFrame.size.height > streamFrame.size.width) {
-        streamFrame.size = CGSizeMake(streamFrame.size.height, streamFrame.size.width);
-    }
     
     [UIApplication sharedApplication].idleTimerDisabled = YES;
     
@@ -86,7 +82,9 @@
     
     _stageLabel = [[UILabel alloc] init];
     [_stageLabel setUserInteractionEnabled:NO];
-    [_stageLabel setText:[NSString stringWithFormat:@"Starting %@...", self.streamConfig.appName]];
+    [_stageLabel setText:[NSString stringWithFormat:@"Connecting to %@…", self.streamConfig.appName ?: @"PC"]];
+    _stageLabel.font = [ArtemisTypography headlineFont];
+    _stageLabel.numberOfLines = 0;
     [_stageLabel sizeToFit];
     _stageLabel.textAlignment = NSTextAlignmentCenter;
     _stageLabel.textColor = [UIColor whiteColor];
@@ -97,7 +95,8 @@
 #if TARGET_OS_TV
     [_spinner setActivityIndicatorViewStyle:UIActivityIndicatorViewStyleWhiteLarge];
 #else
-    [_spinner setActivityIndicatorViewStyle:UIActivityIndicatorViewStyleWhite];
+    [_spinner setActivityIndicatorViewStyle:UIActivityIndicatorViewStyleLarge];
+    _spinner.color = [UIColor whiteColor];
 #endif
     [_spinner sizeToFit];
     [_spinner startAnimating];
@@ -127,13 +126,6 @@
     [self.view addGestureRecognizer:_menuDoubleTapGestureRecognizer];
     [self.view addGestureRecognizer:_playPauseTapGestureRecognizer];
 
-#else
-    _exitSwipeRecognizer = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(edgeSwiped)];
-    _exitSwipeRecognizer.edges = UIRectEdgeLeft;
-    _exitSwipeRecognizer.delaysTouchesBegan = NO;
-    _exitSwipeRecognizer.delaysTouchesEnded = NO;
-    
-    [self.view addGestureRecognizer:_exitSwipeRecognizer];
 #endif
     
     _tipLabel = [[UILabel alloc] init];
@@ -142,8 +134,10 @@
 #if TARGET_OS_TV
     [_tipLabel setText:@"Tip: Tap the Play/Pause button on the Apple TV Remote to disconnect from your PC"];
 #else
-    [_tipLabel setText:@"Tip: Swipe from the left edge to disconnect from your PC"];
+    [_tipLabel setText:@"Drag one finger to move the pointer, tap to click"];
 #endif
+    _tipLabel.font = [ArtemisTypography captionFont];
+    _tipLabel.numberOfLines = 0;
     
     [_tipLabel sizeToFit];
     _tipLabel.textColor = [UIColor whiteColor];
@@ -185,25 +179,27 @@
                                                object: nil];
 #endif
     
-    // Only enable scroll and zoom in absolute touch mode
-    if (_settings.absoluteTouchMode) {
-        _scrollView = [[UIScrollView alloc] initWithFrame:streamFrame];
-#if !TARGET_OS_TV
-        [_scrollView.panGestureRecognizer setMinimumNumberOfTouches:2];
-#endif
-        [_scrollView setShowsHorizontalScrollIndicator:NO];
-        [_scrollView setShowsVerticalScrollIndicator:NO];
-        [_scrollView setDelegate:self];
-        [_scrollView setMaximumZoomScale:10.0f];
-        
-        // Add StreamView inside a UIScrollView for absolute mode
-        [_scrollView addSubview:_streamView];
-        [self.view addSubview:_scrollView];
-    }
-    else {
-        // Add StreamView directly in relative mode
-        [self.view addSubview:_streamView];
-    }
+    // The remote desktop controls (touch gestures, zoom, control bar, keyboard) around the
+    // stream view; they replace upstream's touch handlers and scroll view.
+    _desktop = [[DesktopViewController alloc] initWithContentView:_streamView
+                                                       streamSize:CGSizeMake(self.streamConfig.width, self.streamConfig.height)
+                                                            input:[[MoonlightDesktopInput alloc] init]
+                                                            title:self.streamConfig.appName ?: @"PC"
+                                                      localCursor:NO];
+    __weak StreamFrameViewController* weakSelf = self;
+    _desktop.onDisconnect = ^{
+        [weakSelf returnToMainFrame];
+    };
+    [_streamView useDesktopTouchHandler:_desktop.touchHandler];
+    __weak DesktopViewController* desktop = _desktop;
+    _streamView.pointerMoved = ^(CGPoint normalized) {
+        [desktop pointerMovedExternallyTo:normalized];
+    };
+    [self addChildViewController:_desktop];
+    _desktop.view.frame = self.view.bounds;
+    _desktop.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:_desktop.view];
+    [_desktop didMoveToParentViewController:self];
     
     [self.view addSubview:_stageLabel];
     [self.view addSubview:_spinner];
@@ -217,11 +213,20 @@
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     
-    // Keep the overlays centered if the view's size changes after loading
-    CGSize size = self.view.bounds.size;
-    _stageLabel.center = CGPointMake(size.width / 2, size.height / 2);
-    _spinner.center = CGPointMake(size.width / 2, size.height / 2 - _stageLabel.frame.size.height - _spinner.frame.size.height);
-    _tipLabel.center = CGPointMake(size.width / 2, size.height * 0.9);
+    // Keep the connection status centered on the desktop as the layout changes
+    [_desktop.view layoutIfNeeded];
+    CGRect canvas = _desktop.canvasFrame;
+    CGFloat width = MIN(canvas.size.width - 40, 520);
+    CGSize stageSize = [_stageLabel sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+    _stageLabel.bounds = CGRectMake(0, 0, width, stageSize.height);
+    _stageLabel.center = CGPointMake(CGRectGetMidX(canvas), CGRectGetMidY(canvas));
+    _spinner.center = CGPointMake(CGRectGetMidX(canvas), CGRectGetMidY(canvas) - stageSize.height / 2 - _spinner.frame.size.height);
+    CGSize tipSize = [_tipLabel sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+    _tipLabel.bounds = CGRectMake(0, 0, width, tipSize.height);
+    _tipLabel.center = CGPointMake(CGRectGetMidX(canvas), CGRectGetMidY(canvas) + stageSize.height / 2 + tipSize.height / 2 + 14);
+    if (_overlayView != nil) {
+        [_overlayView setCenter:CGPointMake(CGRectGetMidX(canvas), canvas.origin.y + _overlayView.frame.size.height / 2)];
+    }
 }
 
 - (void)cleanupStream {
@@ -287,7 +292,7 @@
 #if TARGET_OS_TV
         [_overlayView setFont:[UIFont systemFontOfSize:24]];
 #else
-        [_overlayView setFont:[UIFont systemFontOfSize:12]];
+        [_overlayView setFont:[ArtemisTypography captionFont]];
 #endif
         [_overlayView setAlpha:0.5];
         [self.view addSubview:_overlayView];
@@ -303,7 +308,8 @@
                                            _overlayView.frame.size.height)];
         [_overlayView setText:text];
         [_overlayView sizeToFit];
-        [_overlayView setCenter:CGPointMake(self.view.frame.size.width / 2, _overlayView.frame.size.height / 2)];
+        CGRect canvas = _desktop.canvasFrame;
+        [_overlayView setCenter:CGPointMake(CGRectGetMidX(canvas), canvas.origin.y + _overlayView.frame.size.height / 2)];
         [_overlayView setHidden:NO];
     }
     else {
@@ -430,7 +436,7 @@
         
         if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
             title = @"Connection Error";
-            message = @"Your device's network connection is blocking Artemis. Streaming may not work while connected to this network.";
+            message = @"Your device's network connection is blocking Artemis. Connecting may not work while you're on this network.";
         }
         else {
             switch (errorCode) {
@@ -456,12 +462,12 @@
                 case ML_ERROR_UNEXPECTED_EARLY_TERMINATION:
                 case ML_ERROR_PROTECTED_CONTENT:
                     title = @"Connection Error";
-                    message = @"Something went wrong on your host PC when starting the stream.\n\nMake sure you don't have any DRM-protected content open on your host PC. You can also try restarting your host PC.\n\nIf the issue persists, try reinstalling your GPU drivers and GeForce Experience.";
+                    message = @"Something went wrong on your PC when starting the session.\n\nClose any DRM-protected content on the PC, or try restarting it.\n\nIf it keeps happening, try reinstalling the PC's GPU drivers.";
                     break;
                     
                 case ML_ERROR_FRAME_CONVERSION:
                     title = @"Connection Error";
-                    message = @"The host PC reported a fatal video encoding error.\n\nTry disabling HDR mode, changing the streaming resolution, or changing your host PC's display resolution.";
+                    message = @"The host PC reported a fatal video encoding error.\n\nTry disabling HDR mode, changing the resolution in Settings, or changing your host PC's display resolution.";
                     break;
                     
                 default:
@@ -499,11 +505,8 @@
 - (void) stageStarting:(const char*)stageName {
     Log(LOG_I, @"Starting %s", stageName);
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSString* lowerCase = [NSString stringWithFormat:@"%s in progress...", stageName];
-        NSString* titleCase = [[[lowerCase substringToIndex:1] uppercaseString] stringByAppendingString:[lowerCase substringFromIndex:1]];
-        [self->_stageLabel setText:titleCase];
-        [self->_stageLabel sizeToFit];
-        self->_stageLabel.center = CGPointMake(self.view.frame.size.width / 2, self->_stageLabel.center.y);
+        [self->_stageLabel setText:[NSString stringWithFormat:@"Connecting to %@…\n%s", self.streamConfig.appName ?: @"PC", stageName]];
+        [self.view setNeedsLayout];
     });
 }
 
@@ -526,7 +529,7 @@
             message = [message stringByAppendingString:[NSString stringWithFormat:@"\n\nCheck your firewall and port forwarding rules for port(s):\n%s", failingPorts]];
         }
         if (portTestResults != ML_TEST_RESULT_INCONCLUSIVE && portTestResults != 0) {
-            message = [message stringByAppendingString:@"\n\nYour device's network connection is blocking Artemis. Streaming may not work while connected to this network."];
+            message = [message stringByAppendingString:@"\n\nYour device's network connection is blocking Artemis. Connecting may not work while you're on this network."];
         }
         
         UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Connection Failed"
@@ -729,13 +732,9 @@
     return YES;
 }
 
-// The stream is landscape; it's presented that way even if the phone is upright.
+// Upright (the desktop on top, the controls under it) or landscape (full screen).
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskLandscape;
-}
-
-- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
-    return UIInterfaceOrientationLandscapeRight;
+    return UIInterfaceOrientationMaskAllButUpsideDown;
 }
 
 - (BOOL)prefersStatusBarHidden {

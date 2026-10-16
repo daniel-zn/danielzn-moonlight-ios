@@ -12,8 +12,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case video = "Video & Display"
     case audio = "Audio & Microphone"
     case keyboard = "Keyboard & Mouse"
-    case controllers = "Game Controllers"
-    case touch = "Touch Controls"
+    case controllers = "Controllers"
+    case touch = "Touch & Pointer"
     case host = "Host PC"
     case general = "General"
     case advanced = "Advanced"
@@ -26,7 +26,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .audio: "speaker.wave.2.fill"
         case .keyboard: "keyboard.fill"
         case .controllers: "gamecontroller.fill"
-        case .touch: "hand.tap.fill"
+        case .touch: "hand.point.up.left.fill"
         case .host: "desktopcomputer"
         case .general: "gearshape.fill"
         case .advanced: "wrench.and.screwdriver.fill"
@@ -50,6 +50,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = StreamSettings.load()
+    @State private var pointer = PointerSettings.load()
 
     var body: some View {
         NavigationStack {
@@ -57,21 +58,17 @@ struct SettingsView: View {
                 Section {
                     ForEach(SettingsSection.allCases) { section in
                         NavigationLink(value: section) {
-                            Label {
-                                Text(section.rawValue)
-                            } icon: {
-                                SettingsIcon(symbol: section.symbol, color: section.color)
-                            }
+                            SettingsRowLabel(section: section)
                         }
                         .accessibilityIdentifier("settings.\(section)")
                     }
                 } footer: {
-                    Text("Streaming as \(settings.resolutionSummary) at \(settings.framerate) FPS, \(settings.bitrateText).")
+                    Note("Sessions use \(settings.resolutionSummary) at \(settings.framerate) FPS, \(settings.bitrateText).")
                 }
             }
             .navigationTitle("Settings")
             .navigationDestination(for: SettingsSection.self) { section in
-                SettingsPage(section: section, settings: $settings)
+                SettingsPage(section: section, settings: $settings, pointer: $pointer)
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -82,6 +79,46 @@ struct SettingsView: View {
         }
         .onChange(of: settings) { _, new in
             new.save()
+        }
+        .onChange(of: pointer) { _, new in
+            new.save()
+        }
+    }
+}
+
+/// A section header or footer in the app's typeface.
+struct Note: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .artemisFont(.footnote)
+    }
+}
+
+/// A section's row: its icon beside the name, or above it at the accessibility text sizes
+/// (where the wide typeface needs the row's whole width).
+struct SettingsRowLabel: View {
+    let section: SettingsSection
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsIcon(symbol: section.symbol, color: section.color)
+                Text(section.rawValue)
+            }
+            .padding(.vertical, 4)
+        } else {
+            Label {
+                Text(section.rawValue)
+            } icon: {
+                SettingsIcon(symbol: section.symbol, color: section.color)
+            }
         }
     }
 }
@@ -104,6 +141,7 @@ struct SettingsIcon: View {
 struct SettingsPage: View {
     let section: SettingsSection
     @Binding var settings: StreamSettings
+    @Binding var pointer: PointerSettings
     @State private var resolutions = StreamSettings.presetResolutions
     @State private var customWidth = ""
     @State private var customHeight = ""
@@ -168,11 +206,11 @@ struct SettingsPage: View {
                     Text("120 FPS").tag(120)
                 }
             }
-            LabeledContent("Set PC/Game resolution", value: "\(settings.width) × \(settings.height)")
+            LabeledContent("PC resolution", value: "\(settings.width) × \(settings.height)")
         } header: {
-            Text("Resolution and FPS")
+            Note("Resolution and FPS")
         } footer: {
-            Text("Setting values too high for your PC or network connection may cause lag, stuttering, or errors.")
+            Note("Values too high for your PC or network connection may cause lag, stuttering, or errors.")
         }
 
         Section {
@@ -196,28 +234,28 @@ struct SettingsPage: View {
                 .accessibilityIdentifier("settings.bitrate")
             }
         } footer: {
-            Text("Lower the bitrate on slower connections. Raise the bitrate to increase image quality.")
+            Note("Lower the bitrate on slower connections. Raise the bitrate to increase image quality.")
         }
 
         Section {
             Toggle("Enable HDR", isOn: $settings.enableHdr)
                 .disabled(!ArtemisBridge.isHdrSupported())
         } footer: {
-            Text(ArtemisBridge.isHdrSupported()
-                 ? "The stream will be HDR-capable, but some games may require an HDR monitor on your host PC to enable HDR mode."
-                 : "HDR streaming is not supported on this iPhone.")
+            Note(ArtemisBridge.isHdrSupported()
+                 ? "The session will be HDR-capable, but some apps need an HDR display on the PC to turn HDR on."
+                 : "HDR isn't supported on this iPhone.")
         }
 
         Section {
             Toggle("Frame pacing", isOn: $settings.useFramePacing)
         } footer: {
-            Text("Frame pacing reduces micro-stutter by delaying frames that come in too early, for the smoothest video at the cost of a little latency.")
+            Note("Frame pacing reduces micro-stutter by delaying frames that come in too early, for the smoothest video at the cost of a little latency.")
         }
 
         Section {
-            Toggle("Show performance stats while streaming", isOn: $settings.statsOverlay)
+            Toggle("Show performance stats during a session", isOn: $settings.statsOverlay)
         } footer: {
-            Text("Display real-time stream performance information while streaming.")
+            Note("Shows real-time video and network performance over the desktop.")
         }
         .alert("Enter a custom resolution:", isPresented: $askingCustomResolution) {
             TextField("Video width", text: $customWidth)
@@ -230,7 +268,7 @@ struct SettingsPage: View {
         .alert("Custom Resolution Selected", isPresented: $customResolutionNote) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Custom resolutions are not officially supported by GeForce Experience, so it will not set your host display resolution. You will need to set it manually while in game.\n\nResolutions that are not supported by your client or host PC may cause streaming errors.")
+            Text("Not every host sets the PC's display to a custom resolution, so you may need to set it on the PC yourself.\n\nResolutions your iPhone or PC don't support may cause connection errors.")
         }
     }
 
@@ -253,14 +291,14 @@ struct SettingsPage: View {
     @ViewBuilder
     private var audio: some View {
         Section {
-            Toggle("Mute host PC speakers while streaming", isOn: Binding(
+            Toggle("Mute the PC's speakers during a session", isOn: Binding(
                 get: { !settings.playAudioOnPC },
                 set: { settings.playAudioOnPC = !$0 }
             ))
         } header: {
-            Text("Audio Settings")
+            Note("Audio Settings")
         } footer: {
-            Text("Game audio plays on this iPhone. Turn this off to hear it on the PC too.")
+            Note("The PC's audio plays on this iPhone. Turn this off to hear it on the PC too.")
         }
     }
 
@@ -269,7 +307,7 @@ struct SettingsPage: View {
         Section {
             Toggle("Citrix X1 mouse support", isOn: $settings.btMouseSupport)
         } footer: {
-            Text("Use a Citrix X1 Bluetooth mouse while streaming. Other mice and keyboards work without this.")
+            Note("Use a Citrix X1 Bluetooth mouse during a session. Other mice and keyboards work without this.")
         }
     }
 
@@ -278,57 +316,74 @@ struct SettingsPage: View {
         Section {
             Toggle("Multiple controllers", isOn: $settings.multiController)
         } header: {
-            Text("Gamepad Settings")
+            Note("Controller Settings")
         } footer: {
-            Text("On: each connected controller is its own player. Off: every controller controls player 1.")
+            Note("On: each connected controller is its own player. Off: every controller controls player 1.")
         }
         Section {
-            Toggle("Swap A/B and X/Y gamepad buttons", isOn: $settings.swapABXYButtons)
+            Toggle("Swap A/B and X/Y controller buttons", isOn: $settings.swapABXYButtons)
         } footer: {
-            Text("This switches gamepads into a Nintendo-style button layout.")
+            Note("This switches controllers into a Nintendo-style button layout.")
         }
     }
 
     @ViewBuilder
     private var touch: some View {
         Section {
-            Toggle("Use touchscreen as a virtual trackpad", isOn: Binding(
-                get: { !settings.absoluteTouchMode },
-                set: { settings.absoluteTouchMode = !$0 }
-            ))
+            Picker("Default mode", selection: $settings.absoluteTouchMode) {
+                Text("Trackpad").tag(false)
+                Text("Direct").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.pointerMode")
+        } header: {
+            Note("Pointer")
         } footer: {
-            Text("When on, the touchscreen acts like a trackpad. When off, it directly controls the mouse pointer, and you can pinch to zoom the stream.")
+            Note(settings.absoluteTouchMode
+                 ? "Direct: tap or drag where things are on the desktop. Press and hold to right-click."
+                 : "Trackpad: drag one finger to move the pointer and tap to click, like a laptop's trackpad. Two fingers tap to right-click and drag to scroll.")
         }
         Section {
-            Picker("On-screen controls", selection: $settings.onscreenControls) {
-                Text("Off").tag(0)
-                Text("Automatic").tag(1)
-                Text("Simple").tag(2)
-                Text("Full").tag(3)
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Pointer speed", value: String(format: "%.1f×", pointer.pointerSpeed))
+                Slider(value: $pointer.pointerSpeed, in: PointerSettings.speedRange, step: 0.1) {
+                    Text("Pointer speed")
+                } minimumValueLabel: {
+                    Image(systemName: "tortoise")
+                } maximumValueLabel: {
+                    Image(systemName: "hare")
+                }
+                .accessibilityValue(String(format: "%.1f×", pointer.pointerSpeed))
+                .accessibilityIdentifier("settings.pointerSpeed")
             }
-            .disabled(settings.absoluteTouchMode)
+            Toggle("Natural scrolling", isOn: $pointer.naturalScrolling)
         } footer: {
-            Text(settings.absoluteTouchMode
-                 ? "On-screen controls are off while the touchscreen controls the pointer directly."
-                 : "Automatic shows them when no controller is connected.")
+            Note("With natural scrolling, the content follows your fingers, as on iPhone.")
+        }
+        Section {
+            Toggle("Show control bar", isOn: $pointer.showControlBar)
+        } footer: {
+            Note("The bar with the keyboard, shortcuts and Disconnect. When off, a session starts with it folded into a small button you can drag anywhere.")
         }
     }
 
     @ViewBuilder
     private var host: some View {
         Section {
-            Toggle("Optimize game settings for streaming", isOn: $settings.optimizeGames)
+            Toggle("Optimize app settings for the session", isOn: $settings.optimizeGames)
         } header: {
-            Text("Host Settings")
+            Note("Host Settings")
         } footer: {
-            Text("Lets the host change a game's settings to suit the stream.")
+            Note("Lets the host change an app's settings to suit the session.")
         }
     }
 
     @ViewBuilder
     private var general: some View {
-        Section("About") {
+        Section {
             LabeledContent("Version", value: Self.version)
+        } header: {
+            Note("About")
         }
         Section {
             Link(destination: Links.setupGuide) {
@@ -338,9 +393,9 @@ struct SettingsPage: View {
                 Label("Troubleshooting", systemImage: "questionmark.circle")
             }
         } header: {
-            Text("Help")
+            Note("Help")
         } footer: {
-            Text("Artemis is based on Moonlight, an open-source client for Sunshine and Apollo.")
+            Note("Artemis is based on Moonlight, an open-source client for Sunshine and Apollo.")
         }
     }
 
@@ -358,9 +413,9 @@ struct SettingsPage: View {
                 }
             }
         } header: {
-            Text("Advanced Settings")
+            Note("Advanced Settings")
         } footer: {
-            Text("Automatic picks the most efficient codec this iPhone decodes in hardware.")
+            Note("Automatic picks the most efficient codec this iPhone decodes in hardware.")
         }
     }
 

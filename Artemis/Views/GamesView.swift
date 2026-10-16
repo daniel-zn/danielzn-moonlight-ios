@@ -2,8 +2,8 @@
 //  GamesView.swift
 //  Artemis
 //
-//  A PC's games, as rows with box art and a Running badge, like the Mac app;
-//  tapping launches or resumes.
+//  A PC's apps, as rows with their artwork and an Active badge, like the Mac app;
+//  tapping connects to one or resumes the active session.
 //
 
 import SwiftUI
@@ -12,9 +12,9 @@ struct GamesView: View {
     let hostID: String
     @Environment(ComputerStore.self) private var store
     @State private var search = ""
-    /// Starting another game while one runs: quit that one first?
+    /// Opening another app while one is active: end that session first?
     @State private var switching: Game?
-    /// Ending the running game.
+    /// Ending the active session.
     @State private var ending: Game?
 
     private var computer: Computer? { store.computer(hostID) }
@@ -35,7 +35,7 @@ struct GamesView: View {
                 }
                 .swipeActions(edge: .trailing) {
                     if game.isRunning {
-                        Button("End Game", systemImage: "stop.fill", role: .destructive) { ending = game }
+                        Button("End Session", systemImage: "stop.fill", role: .destructive) { ending = game }
                     } else {
                         Button(game.isHidden ? "Show" : "Hide", systemImage: game.isHidden ? "eye" : "eye.slash") {
                             store.setHidden(game, hidden: !game.isHidden)
@@ -49,21 +49,28 @@ struct GamesView: View {
         .overlay {
             if games.isEmpty {
                 if store.loadingGames.contains(hostID) {
-                    ProgressView("Loading games…")
+                    ProgressView {
+                        Text("Loading apps…").artemisFont(.subheadline)
+                    }
                 } else if !search.isEmpty {
                     ContentUnavailableView.search(text: search)
                 } else {
                     ContentUnavailableView {
-                        Label("No games to show", systemImage: "gamecontroller")
+                        Label {
+                            Text("No apps to show").artemisFont(.title2)
+                        } icon: {
+                            Image(systemName: "square.grid.2x2")
+                        }
                     } description: {
-                        Text("This PC has no apps, or they're hidden. To see hidden ones, choose Show All Games, Including Hidden from the ⋯ menu.")
+                        Text("This PC has no apps, or they're hidden. To see hidden ones, choose Show All Apps, Including Hidden from the ⋯ menu.")
+                            .artemisFont(.callout)
                     }
                 }
             }
         }
-        .searchable(text: $search, prompt: "Search Games")
+        .searchable(text: $search, prompt: "Search Apps")
         .searchToolbarBehavior(.minimize)
-        .navigationTitle(computer?.name ?? "Games")
+        .navigationTitle(computer?.name ?? "Apps")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -73,7 +80,7 @@ struct GamesView: View {
                             if show { store.showingHiddenGames.insert(hostID) } else { store.showingHiddenGames.remove(hostID) }
                         }
                     )) {
-                        Label("Show All Games, Including Hidden", systemImage: "eye")
+                        Label("Show All Apps, Including Hidden", systemImage: "eye")
                     }
                     Button("Refresh", systemImage: "arrow.clockwise") { store.refreshGames(hostID) }
                 } label: {
@@ -84,11 +91,11 @@ struct GamesView: View {
         }
         .refreshable { store.refreshGames(hostID) }
         .alert(
-            "\(store.runningGame(on: hostID)?.name ?? "A game") is running",
+            "\(store.runningGame(on: hostID)?.name ?? "An app") is active",
             isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
             presenting: switching
         ) { game in
-            Button("Quit It and Start \(game.name)", role: .destructive) {
+            Button("End It and Open \(game.name)", role: .destructive) {
                 store.endGame(on: hostID, thenStart: game)
             }
             if let running = store.runningGame(on: hostID) {
@@ -96,17 +103,17 @@ struct GamesView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { game in
-            Text("Quit it and start \(game.name)? Any unsaved progress will be lost.")
+            Text("End the session on \(computer?.name ?? "the PC") and open \(game.name)? Unsaved work in \(store.runningGame(on: hostID)?.name ?? "the active app") may be lost.")
         }
         .alert(
-            "End \(ending?.name ?? "the game")?",
+            "End the session on \(computer?.name ?? "the PC")?",
             isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }),
             presenting: ending
         ) { _ in
-            Button("End Game on PC", role: .destructive) { store.endGame(on: hostID) }
+            Button("End Session", role: .destructive) { store.endGame(on: hostID) }
             Button("Cancel", role: .cancel) {}
         } message: { game in
-            Text("Are you sure you want to quit \(game.name)? Any unsaved progress will be lost.")
+            Text("\(game.name) closes on the PC. Unsaved work in it may be lost.")
         }
     }
 
@@ -121,11 +128,11 @@ struct GamesView: View {
     @ViewBuilder
     private func menu(for game: Game) -> some View {
         if game.isRunning {
-            Button("Resume Game", systemImage: "play.fill") { store.play(game) }
-            Button("End Game on PC", systemImage: "stop.fill", role: .destructive) { ending = game }
+            Button("Resume", systemImage: "play.fill") { store.play(game) }
+            Button("End Session", systemImage: "stop.fill", role: .destructive) { ending = game }
         } else {
-            Button("Launch Game", systemImage: "play.fill") { tapped(game) }
-            Button(game.isHidden ? "Show Game" : "Hide Game", systemImage: game.isHidden ? "eye" : "eye.slash") {
+            Button("Connect", systemImage: "play.fill") { tapped(game) }
+            Button(game.isHidden ? "Show App" : "Hide App", systemImage: game.isHidden ? "eye" : "eye.slash") {
                 store.setHidden(game, hidden: !game.isHidden)
             }
         }
@@ -141,7 +148,7 @@ struct GameRow: View {
 
     var body: some View {
         // Separate buttons with their own styles, so a tap on the row doesn't press Resume too.
-        // A running game's buttons sit under its name, which leaves the name room upright.
+        // An active app's buttons sit under its name, which leaves the name room upright.
         VStack(alignment: .leading, spacing: 8) {
             mainButton
             if game.isRunning {
@@ -174,19 +181,19 @@ struct GameRow: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(game.name)
-                .font(.body.weight(.medium))
+                .artemisFont(.bodyEmphasized)
                 .foregroundStyle(game.isHidden ? .secondary : .primary)
             if game.isRunning {
-                Text("Running")
-                    .font(.caption.weight(.semibold))
+                Text("Active")
+                    .artemisFont(.caption)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3)
                     .background(.green, in: .capsule)
                     .accessibilityIdentifier("game.running")
             } else if game.isHidden {
                 Label("Hidden", systemImage: "eye.slash")
-                    .font(.caption)
+                    .artemisFont(.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -204,19 +211,20 @@ struct GameRow: View {
                 .buttonStyle(.glassProminent)
                 .accessibilityIdentifier("game.resume")
                 Button(action: onEnd) {
-                    Label("End Game", systemImage: "stop.fill")
+                    Label("End Session", systemImage: "stop.fill")
                         .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
                 }
                 .buttonStyle(.glass)
-                .accessibilityLabel("End Game on PC")
+                .accessibilityLabel("End Session")
                 .accessibilityIdentifier("game.end")
             }
             .labelStyle(.titleAndIcon)
+            .artemisFont(.subheadline)
         }
     }
 }
 
-/// A game's box art, or a placeholder until the PC has sent it.
+/// An app's artwork, or a placeholder until the PC has sent it.
 struct BoxArtView: View {
     let game: Game
     @Environment(ComputerStore.self) private var store
@@ -231,7 +239,7 @@ struct BoxArtView: View {
             } else {
                 Rectangle()
                     .fill(.fill.tertiary)
-                Image(systemName: "gamecontroller.fill")
+                Image(systemName: "macwindow")
                     .font(.title3)
                     .foregroundStyle(.tertiary)
             }

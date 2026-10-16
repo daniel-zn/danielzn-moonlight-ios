@@ -38,7 +38,7 @@ struct Computer: Identifiable, Hashable {
                 return "Not paired · Tap to pair"
             }
             if let runningGameName {
-                return "Online · Playing \(runningGameName)"
+                return "Online · \(runningGameName) active"
             }
             return "Online"
         }

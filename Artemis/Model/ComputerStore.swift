@@ -18,11 +18,11 @@ final class ComputerStore {
     private(set) var computers: [Computer] = []
     private(set) var gamesByHost: [String: [Game]] = [:]
     var path: [Route] = []
-    /// A full-screen "working" card (connecting, ending a game, testing the network).
+    /// A full-screen "working" card (connecting, ending a session, testing the network).
     var busyMessage: String?
     var alert: AlertInfo?
     var pairing: PairingInfo?
-    /// Hosts whose games list shows hidden games too ("Show All Games, Including Hidden").
+    /// Hosts whose apps list shows hidden apps too ("Show All Apps, Including Hidden").
     var showingHiddenGames: Set<String> = []
     private(set) var loadingGames: Set<String> = []
     /// Bumped when new box art arrives, so the rows load it again.
@@ -498,7 +498,7 @@ final class ComputerStore {
     func endGame(on hostID: String, thenStart next: Game? = nil) {
         guard let host = hosts[hostID], let running = runningGame(on: hostID) else { return }
         logInfo("Quitting application: \(running.name)")
-        busyMessage = "Ending \(running.name)…"
+        busyMessage = "Ending the session…"
         if isDemo {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 host.currentGame = "0"
@@ -516,7 +516,7 @@ final class ComputerStore {
                 self.busyMessage = nil
                 self.rebuild()
                 if !quit {
-                    self.alert = AlertInfo(title: "Quitting App Failed", message: "Failed to quit app. If this app was started by another device, you'll need to quit from that device.")
+                    self.alert = AlertInfo(title: "Couldn't End the Session", message: "If the session was started from another device, end it from that device.")
                 } else if let next, let fresh = self.games(for: hostID).first(where: { $0.appID == next.appID }) {
                     self.play(fresh)
                 }
@@ -557,12 +557,12 @@ final class ComputerStore {
         // count will persist from paired PCs
         UIApplication.shared.shortcutItems = computers.filter { $0.gameCount > 0 }.map { computer in
             UIApplicationShortcutItem(type: "PC", localizedTitle: computer.name, localizedSubtitle: nil,
-                                      icon: UIApplicationShortcutIcon(type: .play),
+                                      icon: UIApplicationShortcutIcon(systemImageName: "desktopcomputer"),
                                       userInfo: ["UUID": computer.id as NSString])
         }
     }
 
-    /// A home-screen quick action: opens that PC's games.
+    /// A home-screen quick action: opens that PC's apps.
     @discardableResult
     func handleShortcut(_ item: UIApplicationShortcutItem) -> Bool {
         guard let uuid = item.userInfo?["UUID"] as? String, hosts[uuid] != nil else { return false }

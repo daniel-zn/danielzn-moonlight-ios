@@ -19,6 +19,7 @@ struct AddComputerView: View {
             Form {
                 Section {
                     TextField("IP address or hostname", text: $address)
+                        .artemisFont(.body)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -29,11 +30,13 @@ struct AddComputerView: View {
                         .accessibilityIdentifier("add.address")
                 } header: {
                     Text("Add a computer by its IP address or hostname")
+                        .artemisFont(.footnote)
                 } footer: {
                     Text("Artemis finds PCs running Apollo or Sunshine on your network by itself. Add one here if it doesn't show up. Include the port if the host doesn't use the default one.")
+                        .artemisFont(.footnote)
                 }
             }
-            .navigationTitle("Add PC Manually")
+            .navigationTitle("Add PC")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -49,7 +52,7 @@ struct AddComputerView: View {
                     }
                 }
             }
-            .alert("Add PC Manually", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            .alert("Add PC", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                 Button("Help") { openURL(Links.troubleshooting) }
                 Button("OK", role: .cancel) {}
             } message: {
