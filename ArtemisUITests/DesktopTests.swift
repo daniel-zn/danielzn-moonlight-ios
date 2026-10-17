@@ -28,6 +28,37 @@ final class DesktopTests: XCTestCase {
     func testLargeTextUpright() { largeText(orientation: .portrait, name: "portrait") }
     func testLargeTextLandscape() { largeText(orientation: .landscapeLeft, name: "landscape") }
 
+    /// Windows' sign-in screen takes only key events, not Unicode text: a password typed on the
+    /// iOS keyboard, or typed from the clipboard, goes as keys (Shift for capitals and "!").
+    func testTypedPassword() {
+        let tag = "\(appearance)-portrait-L-password"
+        let (app, desktop) = connect(orientation: .portrait)
+        let video = videoFrame(desktop)
+        XCTAssertTrue(MultiTouch.drag(fingers: [CGPoint(x: video.midX - 40, y: video.midY), CGPoint(x: video.midX, y: video.midY),
+                                                CGPoint(x: video.midX + 40, y: video.midY)], by: .zero, duration: 0.1, testCase: self))
+        XCTAssertTrue(app.buttons["key.Esc"].waitForExistence(timeout: 5), "\(tag): the three-finger tap didn't open the keyboard")
+        let password = ["key 0x50 +shift", "key 0x41", "key 0x35", "key 0x35", "key 0x57", "key 0x4F", "key 0x52", "key 0x44",
+                        "key 0x31 +shift"]
+
+        var count = state(desktop).count
+        typeKeys(app, "Pa55word!")
+        shot("\(tag)-1-typed")
+        XCTAssertEqual(events(desktop, since: count), password, "\(tag) typed")
+
+        // Type Clipboard, from the shortcuts menu (iOS asks before the app reads the clipboard)
+        UIPasteboard.general.string = "Pa55word!"
+        count = state(desktop).count
+        app.buttons["bar.shortcuts"].tap()
+        let typeClipboard = app.buttons["Type Clipboard"].firstMatch
+        XCTAssertTrue(typeClipboard.waitForExistence(timeout: 5), "\(tag): no Type Clipboard")
+        typeClipboard.tap()
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow Paste"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        sleep(1)
+        XCTAssertEqual(events(desktop, since: count), password, "\(tag) clipboard")
+        app.terminate()
+    }
+
     // MARK: Helpers
 
     private func shot(_ name: String) {
@@ -102,10 +133,20 @@ final class DesktopTests: XCTestCase {
     }
 
     /// Types on the iOS keyboard's keys (the desktop's key capture isn't a text field, so
-    /// typeText has no focused element to type into).
+    /// typeText has no focused element to type into): Shift for a capital, the 123 layer for
+    /// digits and punctuation.
     private func typeKeys(_ app: XCUIApplication, _ text: String) {
+        let keyboard = app.keyboards.firstMatch
         for character in text {
-            let key = app.keyboards.keys[String(character)]
+            let key = keyboard.keys[String(character)]
+            if !key.waitForExistence(timeout: 1) {
+                if character.isUppercase {
+                    keyboard.buttons["shift"].tap()
+                } else {
+                    // Letters ↔ numbers and punctuation
+                    keyboard.keys["more"].tap()
+                }
+            }
             if key.waitForExistence(timeout: 3) {
                 key.tap()
             } else {

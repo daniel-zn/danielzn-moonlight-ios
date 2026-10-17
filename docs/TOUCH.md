@@ -61,13 +61,17 @@ The iOS keyboard, with a key row above it that sends real key events (`LiSendKey
 - Ctrl, Alt, Win and Shift are sticky: tap = held for the next key or click (then released), double tap = locked
   until tapped again. A typed letter with Ctrl held sends Ctrl+letter; a click with a modifier held sends e.g.
   Ctrl+click.
-- Typed text: letters, digits and US punctuation as key events (they work in every app); other characters (accents,
-  emoji) as Unicode text (`LiSendUtf8TextEvent`). Backspace and Return are keys.
+- Typed text: letters (Shift for capitals), digits, space, Tab and US punctuation (with Shift where a US keyboard
+  needs it) as key events, the way upstream's `KeyboardSupport` translates them; other characters (accents, emoji) as
+  Unicode text (`LiSendUtf8TextEvent`). Backspace and Return are keys. Keys matter on Windows' sign-in screen, UAC
+  and Ctrl+Alt+Del screens (the secure desktop): they ignore Unicode text, so a password typed there must be keys.
+  A password with characters that have no US key (é, £, €) can't be typed there.
 - Hardware keyboards work as in upstream Moonlight (`KeyboardSupport`), with or without the on-screen keyboard.
 
 Shortcuts menu (control bar): Copy, Paste, Undo, Select All; More Editing (Cut, Redo, Find, Save); Windows: Switch Apps (Alt+Tab), Start
 (Win), Show Desktop (Win+D), File Explorer (Win+E), Task Manager (Ctrl+Shift+Esc), Close Window (Alt+F4),
-Screenshot (Win+Shift+S); Type Clipboard (sends the iPhone's clipboard text). Not offered: Ctrl+Alt+Del and Win+L —
+Screenshot (Win+Shift+S); Type Clipboard (types the iPhone's clipboard text, as keys like typed text, so a copied
+password works on the sign-in screen; the sticky modifiers don't apply). Not offered: Ctrl+Alt+Del and Win+L —
 Windows reserves them (the secure attention sequence) and ignores them when they come from injected input, which is
 how Apollo types.
 
@@ -88,7 +92,7 @@ how Apollo types.
 | Buttons | `LiSendMouseButtonEvent(BUTTON_ACTION_PRESS/RELEASE, BUTTON_LEFT/RIGHT/MIDDLE)` |
 | Scroll | `LiSendHighResScrollEvent` / `LiSendHighResHScrollEvent` (120 = one notch; one notch per ~24 points at speed 1) |
 | Keys | `LiSendKeyboardEvent(vk, KEY_ACTION_DOWN/UP, modifiers)` |
-| Text | `LiSendUtf8TextEvent` |
+| Typed characters | `LiSendKeyboardEvent2(vk, …, SS_KBE_FLAG_NON_NORMALIZED)` with VK_LSHIFT around shifted ones; `LiSendUtf8TextEvent` for characters with no US key |
 
 The calls run on one serial queue, so a click's press and release (30 ms apart) keep their order with what follows.
 
@@ -101,4 +105,5 @@ Show control bar.
 
 `-ArtemisDemo YES` connects to a picture of a desktop instead of a stream and records the input events the gestures
 produce (the desktop's accessibility value). `ArtemisUITests/DesktopTests.swift` performs each gesture and checks
-the events, upright and in landscape.
+the events, upright and in landscape; `testTypedPassword` types "Pa55word!" on the iOS keyboard and with Type
+Clipboard and checks both are key events (Shift+P, A, 5, 5, W, O, R, D, Shift+1).

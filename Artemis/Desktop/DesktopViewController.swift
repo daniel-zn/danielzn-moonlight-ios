@@ -328,30 +328,44 @@ final class DesktopViewController: UIViewController {
 
     // MARK: Keys
 
-    private func sendKey(_ keyCode: UInt16, nonNormalized: Bool = false, extra: UInt8 = 0) {
-        input.keyStroke(keyCode, modifiers: session.activeModifierFlags | extra, nonNormalized: nonNormalized)
+    private func sendKey(_ keyCode: UInt16) {
+        input.keyStroke(keyCode, modifiers: session.activeModifierFlags, nonNormalized: false)
     }
 
-    /// Text from the iOS keyboard: keys where a US layout has them (they work in every app),
-    /// Unicode text for the rest.
+    /// Text from the iOS keyboard, with the key row's held modifiers.
     private func typed(_ text: String) {
+        type(text, modifiers: session.activeModifierFlags)
+        session.releaseLatchedModifiers()
+        updateAccessibilityValue()
+    }
+
+    /// Characters as key strokes where a US layout has a key for them (Shift for capitals and
+    /// shifted punctuation): Windows' sign-in screen, UAC and Ctrl+Alt+Del screens take only
+    /// keys, not Unicode text. The rest (accents, emoji) goes as Unicode text.
+    private func type(_ text: String, modifiers: UInt8) {
+        var unicode = ""
+        func flush() {
+            if !unicode.isEmpty { input.text(unicode) }
+            unicode = ""
+        }
         for character in text {
-            if character == "\n" {
-                sendKey(KeyCode.enter)
+            if character.isNewline {
+                flush()
+                input.keyStroke(KeyCode.enter, modifiers: modifiers, nonNormalized: false)
                 continue
             }
             let units = Array(String(character).utf16)
             if units.count == 1 {
                 let event = KeyboardSupport.translateKeyEvent(units[0], with: [])
                 if event.keycode != 0 {
-                    sendKey(event.keycode, nonNormalized: true, extra: event.modifier)
+                    flush()
+                    input.keyStroke(event.keycode, modifiers: modifiers | event.modifier, nonNormalized: true)
                     continue
                 }
             }
-            input.text(String(character))
+            unicode.append(character)
         }
-        session.releaseLatchedModifiers()
-        updateAccessibilityValue()
+        flush()
     }
 
     private func setKeyboard(_ shown: Bool) {
@@ -435,8 +449,9 @@ final class DesktopViewController: UIViewController {
             self?.updateAccessibilityValue()
         }
         actions.typeClipboard = { [weak self] in
+            // As keys too, so a copied password works on the sign-in screen
             if let text = UIPasteboard.general.string, !text.isEmpty {
-                self?.input.text(text)
+                self?.type(text, modifiers: 0)
                 self?.updateAccessibilityValue()
             }
         }
