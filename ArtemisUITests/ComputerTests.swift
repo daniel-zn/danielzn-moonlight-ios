@@ -78,6 +78,18 @@ final class ComputerTests: XCTestCase {
         return element.exists && element.isHittable
     }
 
+    /// Empties a text field: from its end (a tap mid-text leaves part of it), again while text is
+    /// left (keys typed on a busy machine can go missing).
+    private func clear(_ field: XCUIElement) {
+        for _ in 0..<5 {
+            let text = field.value as? String ?? ""
+            if text.isEmpty || text == field.placeholderValue { return }
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+            sleep(1)
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count + 2))
+        }
+    }
+
     /// Alerts can list a button twice; taps the one on screen, again if the alert was still
     /// moving for the keyboard.
     private func tapHittable(_ query: XCUIElementQuery) {
@@ -168,8 +180,8 @@ final class ComputerTests: XCTestCase {
             rename.tap()
             let field = app.alerts.textFields.firstMatch
             XCTAssertTrue(field.waitForExistence(timeout: 5), "\(tag): no name field")
-            field.tap()
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + "Office PC")
+            clear(field)
+            field.typeText("Office PC")
             shot("\(tag)-parity-2-rename")
             tapHittable(app.alerts.buttons.matching(identifier: "rename.confirm"))
             let office = app.buttons["computer.Office PC"]
@@ -190,8 +202,8 @@ final class ComputerTests: XCTestCase {
             // Back to the PC's own name
             openMenu(office, item: "Rename…", in: app).tap()
             XCTAssertTrue(field.waitForExistence(timeout: 5))
-            field.tap()
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12))
+            clear(field)
+            XCTAssertEqual(field.value as? String ?? "", field.placeholderValue ?? "", "\(tag): the name field isn't empty")
             tapHittable(app.alerts.buttons.matching(identifier: "rename.confirm"))
             XCTAssertTrue(enchilada.waitForExistence(timeout: 5), "\(tag): the empty name didn't restore ENCHILADA")
             app.terminate()
