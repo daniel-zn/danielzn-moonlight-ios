@@ -12,9 +12,9 @@ struct GamesView: View {
     let hostID: String
     @Environment(ComputerStore.self) private var store
     @State private var search = ""
-    /// Opening another app while one is active: end that session first?
+    /// Opening another app while one is active: stop that one first?
     @State private var switching: Game?
-    /// Ending the active session.
+    /// Stopping the active app.
     @State private var ending: Game?
 
     private var computer: Computer? { store.computer(hostID) }
@@ -38,7 +38,7 @@ struct GamesView: View {
                 }
                 .swipeActions(edge: .trailing) {
                     if game.isRunning {
-                        Button("End Session", systemImage: "stop.fill", role: .destructive) { ending = game }
+                        Button("Stop", systemImage: "stop.fill", role: .destructive) { ending = game }
                     } else if !game.isDirectLaunch || game.isHidden {
                         Button(game.isHidden ? "Show" : "Hide", systemImage: game.isHidden ? "eye" : "eye.slash") {
                             store.setHidden(game, hidden: !game.isHidden)
@@ -98,7 +98,7 @@ struct GamesView: View {
             isPresented: Binding(get: { switching != nil }, set: { if !$0 { switching = nil } }),
             presenting: switching
         ) { game in
-            Button("End It and Open \(game.name)", role: .destructive) {
+            Button("Stop It and Open \(game.name)", role: .destructive) {
                 store.endGame(on: hostID, thenStart: game)
             }
             if let running = store.runningGame(on: hostID) {
@@ -106,14 +106,14 @@ struct GamesView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { game in
-            Text("End the session on \(computer?.name ?? "the PC") and open \(game.name)? Unsaved work in \(store.runningGame(on: hostID)?.name ?? "the active app") may be lost.")
+            Text("Stop \(store.runningGame(on: hostID)?.name ?? "the active app") on \(computer?.name ?? "the PC") and open \(game.name)? Unsaved work in it may be lost.")
         }
         .alert(
-            "End the session on \(computer?.name ?? "the PC")?",
+            "Stop \(ending?.name ?? "the app") on \(computer?.name ?? "the PC")?",
             isPresented: Binding(get: { ending != nil }, set: { if !$0 { ending = nil } }),
             presenting: ending
         ) { _ in
-            Button("End Session", role: .destructive) { store.endGame(on: hostID) }
+            Button("Stop", role: .destructive) { store.endGame(on: hostID) }
             Button("Cancel", role: .cancel) {}
         } message: { game in
             Text("\(game.name) closes on the PC. Unsaved work in it may be lost.")
@@ -132,7 +132,7 @@ struct GamesView: View {
     private func menu(for game: Game) -> some View {
         if game.isRunning {
             Button("Resume", systemImage: "play.fill") { store.play(game) }
-            Button("End Session", systemImage: "stop.fill", role: .destructive) { ending = game }
+            Button("Stop", systemImage: "stop.fill", role: .destructive) { ending = game }
         } else {
             Button("Connect", systemImage: "play.fill") { tapped(game) }
         }
@@ -229,11 +229,11 @@ struct GameRow: View {
                 .buttonStyle(.glassProminent)
                 .accessibilityIdentifier("game.resume")
                 Button(action: onEnd) {
-                    Label("End Session", systemImage: "stop.fill")
+                    Label("Stop", systemImage: "stop.fill")
                         .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
                 }
                 .buttonStyle(.glass)
-                .accessibilityLabel("End Session")
+                .accessibilityLabel("Stop \(game.name)")
                 .accessibilityIdentifier("game.end")
             }
             .labelStyle(.titleAndIcon)

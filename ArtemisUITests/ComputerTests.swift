@@ -210,7 +210,7 @@ final class ComputerTests: XCTestCase {
         XCTAssertTrue(desktopApp.waitForExistence(timeout: 10))
         let toggle = openMenu(desktopApp, item: "Connect Automatically When Opening PC", in: app)
         XCTAssertTrue(toggle.exists, "no Connect Automatically")
-        XCTAssertTrue(menuItem(app, "End Session").exists, "no End Session in the active app's menu")
+        XCTAssertTrue(menuItem(app, "Stop").exists, "no Stop in the active app's menu")
         shot("\(tag)-parity-4-app-menu")
         toggle.tap()
         XCTAssertTrue(app.staticTexts["game.directLaunch"].waitForExistence(timeout: 5), "no Connects automatically note")
@@ -231,7 +231,7 @@ final class ComputerTests: XCTestCase {
         app.terminate()
     }
 
-    /// Settings › Host PC › End the app on the PC after a session.
+    /// Settings › Host PC › Stop the app on the PC after a session.
     func testEndAppAfterSession() {
         let app = launch(["-ArtemisQuitAppAfterSession", "YES"])
         app.buttons["computer.ENCHILADA"].tap()
@@ -274,5 +274,48 @@ final class ComputerTests: XCTestCase {
             app.terminate()
             XCUIDevice.shared.orientation = .portrait
         }
+    }
+
+    // MARK: Crashes
+
+    /// Daniel's crash (build 1267): long-pressing Apollo's own apps (Steam Big Picture, Virtual
+    /// Display), whose artwork arrives while the menu is open. The menu's artwork preview is
+    /// drawn outside the list and lost the store when it re-rendered.
+    func testLongPressAppsWhileArtworkArrives() {
+        let app = launch()
+        app.buttons["computer.ENCHILADA"].tap()
+        XCTAssertTrue(app.buttons["game.Desktop"].waitForExistence(timeout: 10))
+        for name in ["Steam Big Picture", "Virtual Display", "Desktop"] {
+            let row = app.buttons["game.\(name)"]
+            XCTAssertTrue(reveal(row, in: app), "no \(name)")
+            let connect = openMenu(row, item: name == "Desktop" ? "Resume" : "Connect", in: app)
+            XCTAssertTrue(connect.exists, "\(name): no menu")
+            // Artwork keeps arriving for a few seconds with the menu (and its preview) open
+            sleep(4)
+            XCTAssertEqual(app.state, .runningForeground, "\(name): the app crashed with the menu open")
+            shot("\(appearance)-portrait-L-crash-menu-\(name)")
+            // Close the menu
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap()
+            sleep(1)
+            XCTAssertEqual(app.state, .runningForeground, "\(name): the app crashed closing the menu")
+        }
+        app.terminate()
+    }
+
+    /// Sessions default to the iPhone's own resolution: settings still at upstream's 1280 × 720
+    /// move to Native once.
+    func testNativeResolutionDefault() {
+        let app = launch(["-ArtemisTestOldDefaultResolution", "YES"])
+        app.buttons["computers.settings"].tap()
+        let summary = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Sessions use Native at")).firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 5), "not Native: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Sessions use'")).firstMatch.label)")
+        app.buttons["settings.video"].tap()
+        let picker = app.buttons["settings.resolution"].exists ? app.buttons["settings.resolution"] : app.otherElements["settings.resolution"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        let text = "\(picker.label) \(picker.value as? String ?? "")"
+        XCTAssertTrue(text.contains("Native") && !text.contains("Excluding"), "resolution picker: \(text)")
+        sleep(1)
+        shot("\(appearance)-portrait-L-native-resolution")
+        app.terminate()
     }
 }

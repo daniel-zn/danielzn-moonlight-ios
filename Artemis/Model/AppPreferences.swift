@@ -10,7 +10,7 @@ import Foundation
 
 enum AppPreferences {
     enum Keys {
-        /// Host PC › End the app on the PC after a session.
+        /// Host PC › Stop the app on the PC after a session.
         static let quitAppAfterSession = "ArtemisQuitAppAfterSession"
         /// Controllers › Mouse control with a controller (hold Start / Menu).
         static let gamepadMouse = "ArtemisGamepadMouse"

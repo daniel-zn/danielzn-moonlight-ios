@@ -27,6 +27,11 @@
     char _appVersionString[32];
     char _gfeVersionString[32];
     char _rtspSessionUrl[128];
+    // Artemis: this connection's renderer and callbacks. The statics the C callbacks use are
+    // set from these under initLock in -main and cleared after this connection stops, so a
+    // previous connection still stopping can't stop the new one's renderer or call into it.
+    VideoDecoderRenderer* _myRenderer;
+    id<ConnectionCallbacks> _myCallbacks;
 }
 
 static NSLock* initLock;
@@ -385,6 +390,10 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         [initLock lock];
         LiStopConnection();
+        if (renderer == self->_myRenderer) {
+            renderer = nil;
+            _callbacks = nil;
+        }
         [initLock unlock];
     });
 }
@@ -432,8 +441,8 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
     }
     _serverInfo.serverCodecModeSupport = config.serverCodecModeSupport;
 
-    renderer = myRenderer;
-    _callbacks = callbacks;
+    _myRenderer = myRenderer;
+    _myCallbacks = callbacks;
 
     LiInitializeStreamConfiguration(&_streamConfig);
     _streamConfig.width = config.width;
@@ -498,6 +507,8 @@ void ClSetControllerLED(uint16_t controllerNumber, uint8_t r, uint8_t g, uint8_t
 -(void) main
 {
     [initLock lock];
+    renderer = _myRenderer;
+    _callbacks = _myCallbacks;
     LiStartConnection(&_serverInfo,
                       &_streamConfig,
                       &_clCallbacks,

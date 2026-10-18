@@ -32,9 +32,9 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 | Feature | Mac | iPhone | |
 |---|---|---|---|
 | Launch / resume | Double-click, "Launch Game"/"Resume Game", ⌘R | Tap, "Connect"/"Resume" | ✅ |
-| Running badge, inline Resume / Quit | "Running", Resume, Quit | "Active", Resume, End Session | ✅ |
-| Opening another app while one runs | Quit dialog, then launch | "… is active": End It and Open / Resume / Cancel | ✅ |
-| "Quit Game" / "End Game on PC…" | Menu, confirmation | "End Session", confirmation, swipe | ✅ |
+| Running badge, inline Resume / Quit | "Running", Resume, Quit | "Active", Resume, Stop | ✅ |
+| Opening another app while one runs | Quit dialog, then launch | "… is active": Stop It and Open / Resume / Cancel | ✅ |
+| "Quit Game" / "End Game on PC…" | Menu, confirmation | "Stop", confirmation ("Stop *app* on *PC*?"), swipe | ✅ |
 | "Launch Automatically When Opening PC" | Checkable, one per PC; disabled for hidden apps | "Connect Automatically When Opening PC", the same rules; the row says "Connects automatically"; skipped when another app is active | ✅ |
 | "Hide Game" | Checkable; not for the running or the automatic app | "Hide App" / "Show App", swipe; the same rules | ✅ |
 | Search | — | Search field | ✅ |
@@ -75,7 +75,7 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 | Controllers › Mouse control by holding Start | "Mouse control with a controller" (on by default) | ✅ |
 | Controllers › Gamepad input in the background | ➖ iOS stops controller input in the background | ➖ |
 | Host › Optimize game settings | "Optimize app settings for the session" | ✅ |
-| Host › Quit app on host after ending stream | "End the app on the PC after a session" | ✅ |
+| Host › Quit app on host after ending stream | "Stop the app on the PC after a session" | ✅ |
 | General › Language | ➖ iOS sets each app's language in the Settings app | ➖ |
 | General › GUI display mode | ➖ | ➖ |
 | General › Connection quality / configuration warnings | ➖ not in upstream iOS; the stats overlay shows the connection | ➖ |
@@ -98,7 +98,7 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 | Get Info | Sheet | ✅ |
 | Test Network (testing, result) | Busy card, result | ✅ |
 | Add PC | Sheet | ✅ |
-| Quit game confirmation | End Session confirmation | ✅ |
+| Quit game confirmation | "Stop *app* on *PC*?" with Stop | ✅ |
 | Errors with a help link (connect, no MAC to wake, GFE) | Same, with Help; plus "… Didn't Wake Up" | ✅ |
 | Quit the app? | ➖ iOS apps don't quit | ➖ |
 

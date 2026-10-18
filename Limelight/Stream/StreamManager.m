@@ -25,6 +25,8 @@
     UIView* _renderView;
     id<ConnectionCallbacks> _callbacks;
     Connection* _connection;
+    // Artemis: set by stopStream; a stream left while still launching doesn't start afterwards
+    volatile BOOL _stopped;
 }
 
 - (id) initWithConfig:(StreamConfiguration*)config renderView:(UIView*)view connectionCallbacks:(id<ConnectionCallbacks>)callbacks {
@@ -97,8 +99,16 @@
     // Populate RTSP session URL from launch/resume response
     _config.rtspSessionUrl = sessionUrl;
     
+    if (_stopped) {
+        Log(LOG_I, @"Stream was closed while launching; not connecting");
+        return;
+    }
+    
     // Initializing the renderer must be done on the main thread
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_stopped) {
+            return;
+        }
         VideoDecoderRenderer* renderer = [[VideoDecoderRenderer alloc] initWithView:self->_renderView callbacks:self->_callbacks streamAspectRatio:(float)self->_config.width / (float)self->_config.height useFramePacing:self->_config.useFramePacing];
         self->_connection = [[Connection alloc] initWithConfig:self->_config renderer:renderer connectionCallbacks:self->_callbacks];
         NSOperationQueue* opQueue = [[NSOperationQueue alloc] init];
@@ -108,6 +118,8 @@
 
 - (void) stopStream
 {
+    // Main thread, as the block that creates the connection
+    _stopped = YES;
     [_connection terminate];
 }
 

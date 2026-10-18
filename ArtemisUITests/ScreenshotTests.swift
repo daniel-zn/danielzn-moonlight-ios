@@ -113,7 +113,7 @@ final class ScreenshotTests: XCTestCase {
     func testEveryScreenUprightLargeText() { sweep(size: "AX5", orientation: "portrait") }
     func testEveryScreenLandscapeLargeText() { sweep(size: "AX5", orientation: "landscape") }
 
-    /// Computers, Apps (with the end-session dialog), the connected desktop, pairing, Add PC,
+    /// Computers, Apps (with the Stop dialog), the connected desktop, pairing, Add PC,
     /// Settings and its pages.
     private func sweep(size: String, orientation orientationName: String) {
         do {
@@ -137,11 +137,11 @@ final class ScreenshotTests: XCTestCase {
                 sleep(1)
                 shot(app, "\(tag)-1-computers")
 
-                // Apps: artwork rows, Desktop active with Resume / End Session
+                // Apps: artwork rows, Desktop active with Resume / Stop
                 enchilada.tap()
                 let running = app.buttons["game.Desktop"]
                 XCTAssertTrue(running.waitForExistence(timeout: 10), "\(tag): the apps didn't open")
-                XCTAssertTrue(reveal(app.buttons["game.end"], in: app, timeout: 1), "\(tag): no End Session button")
+                XCTAssertTrue(reveal(app.buttons["game.end"], in: app, timeout: 1), "\(tag): no Stop button")
                 XCTAssertTrue(app.staticTexts["game.running"].exists, "\(tag): no Active badge")
                 XCTAssertEqual(app.staticTexts["game.running"].label, "Active", "\(tag): the badge isn't Active")
                 let resume = app.buttons["game.resume"]
@@ -154,10 +154,10 @@ final class ScreenshotTests: XCTestCase {
 
                 app.buttons["game.end"].tap()
                 let endAlert = app.alerts.firstMatch
-                XCTAssertTrue(endAlert.buttons["End Session"].waitForExistence(timeout: 5), "\(tag): no end-session confirmation")
-                XCTAssertTrue(endAlert.label.contains("End the session on ENCHILADA"), "\(tag): confirmation title \(endAlert.label)")
+                XCTAssertTrue(endAlert.buttons["Stop"].waitForExistence(timeout: 5), "\(tag): no Stop confirmation")
+                XCTAssertTrue(endAlert.label.contains("Stop Desktop on ENCHILADA?"), "\(tag): confirmation title \(endAlert.label)")
                 sleep(1)
-                shot(app, "\(tag)-3-end-session")
+                shot(app, "\(tag)-3-stop")
                 dismissDialog(app)
                 sleep(1)
 
@@ -267,7 +267,7 @@ final class ScreenshotTests: XCTestCase {
         let blender = app.buttons["game.Blender"]
         XCTAssertTrue(blender.waitForExistence(timeout: 10))
         blender.tap()
-        let endAndOpen = app.buttons["End It and Open Blender"]
+        let endAndOpen = app.buttons["Stop It and Open Blender"]
         XCTAssertTrue(endAndOpen.waitForExistence(timeout: 5), "no end-and-open confirmation")
         shot(app, "\(appearance)-portrait-L-9-switch-app")
         endAndOpen.tap()
@@ -277,6 +277,12 @@ final class ScreenshotTests: XCTestCase {
         let failed = app.alerts.firstMatch
         XCTAssertTrue(starting.waitForExistence(timeout: 10) || failed.waitForExistence(timeout: 1), "the session didn't start")
         XCTAssertTrue(app.buttons["bar.disconnect"].exists || failed.exists, "no control bar on the stream screen")
+        // The real stream screen defers system gestures on every edge
+        let desktop = app.otherElements["desktop"]
+        if desktop.exists, !failed.exists {
+            let status = (desktop.value as? String ?? "").components(separatedBy: "\n").first ?? ""
+            XCTAssertTrue(status.contains("edges all"), "stream screen: \(status)")
+        }
         XCTAssertEqual(XCUIDevice.shared.orientation, .portrait)
         shot(app, "\(appearance)-stream-starting")
 

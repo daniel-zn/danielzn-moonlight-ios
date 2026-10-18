@@ -29,7 +29,6 @@ final class DesktopViewController: UIViewController {
     private let canvas = DesktopCanvasView()
     private let trackpadArea = TrackpadAreaView()
     private let keyCapture = KeyCaptureView()
-    private let keyboardSpacer = UIView()
     /// Upright: resets the zoom, on the desktop's corner (landscape has it in the bar).
     private let fitButton = UIButton(configuration: .glass())
     /// "Controller mouse on / off", for a moment.
@@ -123,20 +122,12 @@ final class DesktopViewController: UIViewController {
         keyCapture.accessory = makeKeyRow()
         view.addSubview(keyCapture)
 
-        // Keeps the layout following the keyboard
-        view.keyboardLayoutGuide.usesBottomSafeArea = false
-        keyboardSpacer.isUserInteractionEnabled = false
-        keyboardSpacer.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(keyboardSpacer)
-        NSLayoutConstraint.activate([
-            keyboardSpacer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            keyboardSpacer.widthAnchor.constraint(equalToConstant: 1),
-            keyboardSpacer.topAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
-            keyboardSpacer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
 
         barHost.view.backgroundColor = .clear
         barHost.sizingOptions = [.intrinsicContentSize]
+        // Placed by hand inside the safe area; and no keyboard avoidance, which moved and shrank
+        // the bar's content when the keyboard came up over it
+        barHost.safeAreaRegions = []
         addChild(barHost)
         view.addSubview(barHost.view)
         barHost.didMove(toParent: self)
@@ -171,6 +162,7 @@ final class DesktopViewController: UIViewController {
         if !keyCapture.isFirstResponder {
             contentView.becomeFirstResponder()
         }
+        updateAccessibilityValue()
     }
 
     deinit {
@@ -181,7 +173,7 @@ final class DesktopViewController: UIViewController {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
         let insets = view.safeAreaInsets
-        let keyboardTop = min(bounds.maxY, keyboardSpacer.frame.minY > 0 ? keyboardSpacer.frame.minY : bounds.maxY)
+        // The keyboard and its key row lie over the desktop: nothing here moves or shrinks for them
         let portrait = bounds.height > bounds.width
         if session.isPortrait != portrait {
             session.isPortrait = portrait
@@ -191,22 +183,22 @@ final class DesktopViewController: UIViewController {
         if portrait {
             // The desktop across the top, the bar under it, then the trackpad
             let aspect = streamSize.width / streamSize.height
-            let available = max(120, keyboardTop - insets.top - barSize.height - 16)
+            let available = max(120, bounds.maxY - insets.top - barSize.height - 16)
             let height = min(bounds.width / aspect, available)
             canvas.frame = CGRect(x: 0, y: insets.top, width: bounds.width, height: height)
             barHost.view.frame = CGRect(x: 0, y: canvas.frame.maxY + 8, width: bounds.width, height: barSize.height)
             let areaTop = barHost.view.frame.maxY + 10
-            let areaBottom = keyboardTop < bounds.maxY ? keyboardTop - 8 : bounds.maxY - max(insets.bottom, 12)
+            let areaBottom = bounds.maxY - max(insets.bottom, 12)
             trackpadArea.isHidden = areaBottom - areaTop < 60
             trackpadArea.frame = CGRect(x: 12, y: areaTop, width: bounds.width - 24, height: max(0, areaBottom - areaTop))
         } else {
-            // Full screen; with the keyboard up, the space above it
-            canvas.frame = CGRect(x: 0, y: 0, width: bounds.width, height: keyboardTop)
+            // Full screen
+            canvas.frame = bounds
             trackpadArea.isHidden = true
             let minX = insets.left + barSize.width / 2 + 8
             let maxX = bounds.width - insets.right - barSize.width / 2 - 8
             let minY = max(insets.top, 8) + barSize.height / 2
-            let maxY = min(bounds.height - max(insets.bottom, 8), keyboardTop - 8) - barSize.height / 2
+            let maxY = bounds.height - max(insets.bottom, 8) - barSize.height / 2
             let center = CGPoint(x: min(max(barCenter.x * bounds.width, minX), max(minX, maxX)),
                                  y: min(max(barCenter.y * bounds.height, minY), max(minY, maxY)))
             barHost.view.bounds = CGRect(origin: .zero, size: barSize)
@@ -230,7 +222,8 @@ final class DesktopViewController: UIViewController {
 
     override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        coordinator.animate(alongsideTransition: { _ in self.view.setNeedsLayout(); self.view.layoutIfNeeded() })
+        coordinator.animate(alongsideTransition: { _ in self.view.setNeedsLayout(); self.view.layoutIfNeeded() },
+                            completion: { _ in self.updateAccessibilityValue() })
     }
 
     /// A mouse moved the pointer (StreamView): the trackpad continues from there.
@@ -531,6 +524,7 @@ final class DesktopViewController: UIViewController {
         var lines = [String(format: "zoom %.2f · %@ · keyboard %@ · bar %@ · gamepad mouse %@", scale, session.mode.rawValue,
                             session.keyboardShown ? "on" : "off", session.barExpanded ? "open" : "folded",
                             gamepadMouse.isActive ? "on" : "off")]
+        lines[0] += " · edges " + Self.describe(deferredEdges)
         if let events = recordedEvents?() {
             lines.append("events \(events.count)")
             lines.append(contentsOf: events.suffix(60))
@@ -539,6 +533,26 @@ final class DesktopViewController: UIViewController {
     }
 
     // MARK: Status bar, orientation
+
+    /// The edges iOS defers system gestures on right now: those of the controller it asks
+    /// (the topmost presented one, then its children as they forward the question).
+    var deferredEdges: UIRectEdge {
+        var controller = view.window?.rootViewController
+        while let presented = controller?.presentedViewController, !presented.isBeingDismissed {
+            controller = presented
+        }
+        while let child = controller?.childForScreenEdgesDeferringSystemGestures {
+            controller = child
+        }
+        return controller?.preferredScreenEdgesDeferringSystemGestures ?? []
+    }
+
+    private static func describe(_ edges: UIRectEdge) -> String {
+        if edges == .all { return "all" }
+        let names: [(UIRectEdge, String)] = [(.top, "top"), (.left, "left"), (.bottom, "bottom"), (.right, "right")]
+        let list = names.filter { edges.contains($0.0) }.map(\.1)
+        return list.isEmpty ? "none" : list.joined(separator: "+")
+    }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
     override var prefersStatusBarHidden: Bool { true }

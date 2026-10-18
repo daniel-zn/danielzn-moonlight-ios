@@ -24,7 +24,7 @@ Changes from upstream so far:
   `Moonlight.app` and the code keep upstream's names. No Apple TV target.
 - A native SwiftUI interface with Liquid Glass (`Artemis/`), in the macOS client's screens, worded for a remote
   desktop rather than games: Computers (a row per PC with its status: tap to open its apps, pair or wake it), the
-  pairing PIN, Apps (artwork, an Active badge, Resume and End Session), and Settings in the Mac's sections.
+  pairing PIN, Apps (artwork, an Active badge, Resume and Stop), and Settings in the Mac's sections.
 - Touch controls for the remote desktop (`Artemis/Desktop/`, spec in [docs/TOUCH.md](docs/TOUCH.md)): trackpad and
   direct modes, clicks, drags, two-finger scrolling, pinch to zoom, a movable Liquid Glass control bar, the keyboard
   with a key row (Esc, Tab, sticky Ctrl/Alt/Win/Shift, arrows, F1–F12) and Windows shortcuts. Upright (the desktop on
@@ -42,7 +42,7 @@ Changes from upstream so far:
 - Tapping an asleep PC wakes it (Wake-on-LAN), shows "Waking up…" and opens it once it's up; the status follows
   discovery's polls (`ArtemisHostUpdatedNotification`), and a PC that doesn't come up in 90 s goes back to Offline
   with a message.
-- The Mac app's PC and app actions: Rename…, Get Info, Connect Automatically When Opening PC, End the app on the PC
+- The Mac app's PC and app actions: Rename…, Get Info, Connect Automatically When Opening PC, Stop the app on the PC
   after a session, and the rest compared in [docs/PARITY.md](docs/PARITY.md).
 - Game controllers: passed to the PC as gamepads (upstream's ControllerSupport, without the on-screen gamepad), or
   the PC's mouse while Start / Menu is held for a moment (`Artemis/Desktop/GamepadMouse.swift`, docs/TOUCH.md).

@@ -40,7 +40,8 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     
     UIResponder* touchHandler;
     
-    id<UserInteractionDelegate> interactionDelegate;
+    // Artemis: weak, the stream controller owns this view (a strong one kept every session alive)
+    __weak id<UserInteractionDelegate> interactionDelegate;
     NSTimer* interactionTimer;
     BOOL hasUserInteracted;
     

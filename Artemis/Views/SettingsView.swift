@@ -213,7 +213,7 @@ struct SettingsPage: View {
         } header: {
             Note("Resolution and FPS")
         } footer: {
-            Note("Values too high for your PC or network connection may cause lag, stuttering, or errors.")
+            Note("Native, the default, is this iPhone's own resolution, so the PC's virtual display matches it. Values too high for your PC or network connection may cause lag, stuttering, or errors.")
         }
 
         Section {
@@ -407,7 +407,7 @@ struct SettingsPage: View {
             Note("Lets the host change an app's settings to suit the session.")
         }
         Section {
-            Toggle("End the app on the PC after a session", isOn: $quitAppAfterSession)
+            Toggle("Stop the app on the PC after a session", isOn: $quitAppAfterSession)
                 .accessibilityIdentifier("settings.quitAfterSession")
         } footer: {
             Note("When you disconnect, the app closes on the PC too. Unsaved work in it may be lost.")

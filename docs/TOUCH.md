@@ -78,10 +78,11 @@ how Apollo types.
 ## Layout
 
 - **Landscape:** the desktop fills the screen (letterboxed to its aspect ratio, inside the safe area horizontally),
-  with the floating control bar. With the keyboard up, the desktop shrinks to the space above it.
+  with the floating control bar.
 - **Portrait:** the desktop fits the top of the screen. Below it: the control bar, then a trackpad area (always
-  trackpad, whatever the mode) with large left and right buttons. The keyboard covers the trackpad area, never the
-  desktop.
+  trackpad, whatever the mode) with large left and right buttons.
+- The keyboard and its key row lie on top: the desktop, the trackpad area and the control bar keep their size and
+  place when it opens or closes, even where it covers them (`DesktopTests/testKeyboardOverlays`).
 - Haptics: light on clicks, medium when a press and hold starts, selection ticks on modifier keys.
 
 ## Mapping to Moonlight's input calls

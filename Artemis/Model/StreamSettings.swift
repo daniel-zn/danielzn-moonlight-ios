@@ -72,6 +72,42 @@ struct StreamSettings: Equatable {
             statsOverlay: statsOverlay)
     }
 
+    // MARK: The default resolution
+
+    /// Sessions default to this iPhone's own resolution ("Native": its screen's pixels in
+    /// landscape) at its display's highest frame rate, so the host's virtual display matches the
+    /// phone. Settings still at upstream's default (1280 × 720) move to it once; a resolution
+    /// chosen later stays. Needs the window scene, so the store calls it at start.
+    static func adoptNativeDefaultIfUnchanged() {
+        let defaults = UserDefaults.standard
+        // Demo only: start from upstream's default, to test the move
+        if DemoData.isEnabled && defaults.bool(forKey: "ArtemisTestOldDefaultResolution") {
+            var old = load()
+            old.width = 1280
+            old.height = 720
+            old.framerate = 60
+            old.save()
+            defaults.removeObject(forKey: Keys.nativeDefaultApplied)
+        }
+        guard !defaults.bool(forKey: Keys.nativeDefaultApplied) else { return }
+        defaults.set(true, forKey: Keys.nativeDefaultApplied)
+        var settings = load()
+        guard settings.width == 1280 && settings.height == 720,
+              let native = presetResolutions.first(where: { $0.name == "Native" }) else { return }
+        settings.width = native.width
+        settings.height = native.height
+        if settings.framerate == 60 && supports120FPS {
+            settings.framerate = 120
+        }
+        settings.resetBitrate()
+        settings.save()
+        logInfo("Default resolution: \(native.width) × \(native.height) at \(settings.framerate) FPS")
+    }
+
+    private enum Keys {
+        static let nativeDefaultApplied = "ArtemisNativeDefaultApplied"
+    }
+
     // MARK: Bitrate
 
     static let bitrateTable = [

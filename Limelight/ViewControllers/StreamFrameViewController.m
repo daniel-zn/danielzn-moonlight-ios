@@ -405,6 +405,10 @@
 - (void) connectionStarted {
     Log(LOG_I, @"Connection started");
     dispatch_async(dispatch_get_main_queue(), ^{
+        // Closed meanwhile: no stats timer or controllers for a screen that's gone
+        if (self->_exiting) {
+            return;
+        }
         self->_connected = YES;
         // Leave the spinner spinning until it's obscured by
         // the first frame of video.
@@ -710,9 +714,30 @@
 }
 
 #if !TARGET_OS_TV
-// Require a confirmation when streaming to activate a system gesture
+// Require a confirmation when streaming to activate a system gesture. iOS can't be stopped
+// from opening Notification Centre, Control Centre or going home: deferring makes the first
+// swipe from an edge show only a tab, and a second swipe open it. This controller is presented
+// full screen, so iOS asks it (not the app's hosting controller); its desktop child isn't asked.
 - (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
     return UIRectEdgeAll;
+}
+
+- (UIViewController *)childViewControllerForScreenEdgesDeferringSystemGestures {
+    return nil;
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    // Ask again once on screen: a request while presenting can be dropped
+    [self setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+    [self setNeedsStatusBarAppearanceUpdate];
+}
+
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+    }];
 }
 
 - (BOOL)prefersHomeIndicatorAutoHidden {

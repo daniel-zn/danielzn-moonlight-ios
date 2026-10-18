@@ -42,7 +42,7 @@ enum DemoData {
         let games: [(String, String, Bool)] = [
             ("1", "Desktop", false), ("2", "Visual Studio Code", false), ("3", "Blender", false),
             ("4", "Photoshop", false), ("5", "Terminal", false), ("6", "File Explorer", false),
-            ("7", "Steam Big Picture", false), ("8", "Old Virtual Display", true),
+            ("7", "Steam Big Picture", false), ("8", "Old Virtual Display", true), ("9", "Virtual Display", false),
         ]
         enchilada.appList = Set(games.map { app($0.0, $0.1, hidden: $0.2, host: enchilada) })
         enchilada.currentGame = "1"
@@ -88,8 +88,19 @@ enum DemoData {
         (#colorLiteral(red: 0.55, green: 0.3, blue: 0.75, alpha: 1), #colorLiteral(red: 0.1, green: 0.05, blue: 0.2, alpha: 1)),
     ]
 
-    /// Stand-in artwork: a gradient with the name on it.
-    static func boxArt(for game: Game) -> UIImage {
+    /// Apps whose artwork arrives late, as Apollo's own apps' does (Steam Big Picture, Virtual
+    /// Display): none at first, then a few arrivals while the list is open, each bumping the
+    /// store's box art revision like AppAssetManager's callbacks.
+    static let lateArtApps: Set<String> = ["7", "9"]
+    static var lateArtArrived = false
+
+    /// Stand-in artwork: a gradient with the name on it (nil until a late one arrives).
+    static func boxArt(for game: Game) -> UIImage? {
+        if lateArtApps.contains(game.appID) && !lateArtArrived { return nil }
+        return drawnBoxArt(for: game)
+    }
+
+    private static func drawnBoxArt(for game: Game) -> UIImage {
         let (top, bottom) = palettes[(Int(game.appID) ?? 0) % palettes.count]
         let size = CGSize(width: 300, height: 400)
         return UIGraphicsImageRenderer(size: size).image { context in

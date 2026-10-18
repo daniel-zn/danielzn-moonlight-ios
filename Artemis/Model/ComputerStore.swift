@@ -18,7 +18,7 @@ final class ComputerStore {
     private(set) var computers: [Computer] = []
     private(set) var gamesByHost: [String: [Game]] = [:]
     var path: [Route] = []
-    /// A full-screen "working" card (connecting, ending a session, testing the network).
+    /// A full-screen "working" card (connecting, stopping an app, testing the network).
     var busyMessage: String?
     var alert: AlertInfo?
     var pairing: PairingInfo?
@@ -80,6 +80,7 @@ final class ComputerStore {
     func start() {
         guard !started else { return }
         started = true
+        StreamSettings.adoptNativeDefaultIfUnchanged()
 
         // Discovery's polls change the hosts on background threads; each change posts this
         observers.append(NotificationCenter.default.addObserver(forName: .artemisHostUpdated, object: nil, queue: .main) { [weak self] _ in
@@ -670,7 +671,7 @@ final class ComputerStore {
     func endGame(on hostID: String, thenStart next: Game? = nil) {
         guard let host = hosts[hostID], let running = runningGame(on: hostID) else { return }
         logInfo("Quitting application: \(running.name)")
-        busyMessage = "Ending the session…"
+        busyMessage = "Stopping \(running.name)…"
         if isDemo {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 host.currentGame = "0"
@@ -688,7 +689,7 @@ final class ComputerStore {
                 self.busyMessage = nil
                 self.rebuild()
                 if !quit {
-                    self.alert = AlertInfo(title: "Couldn't End the Session", message: "If the session was started from another device, end it from that device.")
+                    self.alert = AlertInfo(title: "Couldn't Stop the App", message: "If it was started from another device, stop it from that device.")
                 } else if let next, let fresh = self.games(for: hostID).first(where: { $0.appID == next.appID }) {
                     self.play(fresh)
                 }
@@ -696,12 +697,12 @@ final class ComputerStore {
         }
     }
 
-    /// Settings › Host PC › End the app on the PC after a session (the Mac's "Quit app on host
+    /// Settings › Host PC › Stop the app on the PC after a session (the Mac's "Quit app on host
     /// PC after ending stream").
     private func endSessionAfterDisconnect(on hostID: String) {
         guard let host = hosts[hostID] else { return }
-        logInfo("Ending the session on \(host.name) after disconnecting")
-        busyMessage = "Ending the session…"
+        logInfo("Stopping the app on \(host.name) after disconnecting")
+        busyMessage = "Stopping the app…"
         if isDemo {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 host.currentGame = "0"
@@ -717,7 +718,7 @@ final class ComputerStore {
                 guard let self else { return }
                 self.busyMessage = nil
                 if !quit {
-                    self.alert = AlertInfo(title: "Couldn't End the Session", message: "The app is still open on \(self.customNames[hostID] ?? host.name).")
+                    self.alert = AlertInfo(title: "Couldn't Stop the App", message: "The app is still open on \(self.customNames[hostID] ?? host.name).")
                 }
                 if self.selectedHostID == hostID {
                     self.open(hostID, userInitiated: false)
@@ -795,6 +796,14 @@ final class ComputerStore {
         let id: String = host.uuid
         if host.pairState == .paired {
             showGames(id, autoLaunch: autoLaunch)
+            // Artwork arriving while the list is open: the first arrival brings the late ones
+            DemoData.lateArtArrived = false
+            for step in 1...8 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(step) * 0.75) { [weak self] in
+                    DemoData.lateArtArrived = true
+                    self?.boxArtRevision += 1
+                }
+            }
         } else if userInitiated {
             pairingHostID = id
             pairingStarted(pin: "4821")

@@ -59,6 +59,49 @@ final class DesktopTests: XCTestCase {
         app.terminate()
     }
 
+    /// The keyboard lies over the session: the desktop, the trackpad area and the control bar
+    /// keep their frames while it's up and after it closes, upright and in landscape.
+    func testKeyboardOverlays() {
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            let tag = "\(appearance)-\(name)-L-keyboard-overlay"
+            let (app, desktop) = connect(orientation: orientation)
+            sleep(1)
+            var watched: [(String, XCUIElement)] = [("desktop", desktop), ("bar.disconnect", app.buttons["bar.disconnect"]),
+                                                    ("bar.mode", app.buttons["bar.mode"])]
+            if orientation == .portrait {
+                watched.append(("trackpad", app.otherElements["trackpad"].firstMatch))
+            }
+            func frames() -> [String: CGRect] {
+                Dictionary(uniqueKeysWithValues: watched.map { ($0.0, $0.1.frame) })
+            }
+            // System gestures deferred on every edge: a first swipe only shows the system's tab
+            let status = (desktop.value as? String ?? "").components(separatedBy: "\n").first ?? ""
+            XCTAssertTrue(status.contains("edges all"), "\(tag): \(status)")
+            let before = frames()
+            for (key, frame) in before {
+                XCTAssertFalse(frame.isEmpty, "\(tag): \(key) not on screen")
+            }
+            shot("\(tag)-1-before")
+
+            app.buttons["bar.keyboard"].tap()
+            XCTAssertTrue(app.buttons["key.Esc"].waitForExistence(timeout: 5), "\(tag): the keyboard didn't open")
+            sleep(2)
+            XCTAssertEqual(frames(), before, "\(tag): the layout changed with the keyboard up")
+            shot("\(tag)-2-keyboard")
+
+            // Closed with the key row's own button (the bar's may be under the keyboard now)
+            app.buttons["key.hide"].tap()
+            let gone = NSPredicate(format: "exists == false")
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: app.buttons["key.Esc"])], timeout: 5),
+                           .completed, "\(tag): the keyboard didn't close")
+            sleep(2)
+            XCTAssertEqual(frames(), before, "\(tag): the layout changed after the keyboard closed")
+            shot("\(tag)-3-after")
+            app.terminate()
+            XCUIDevice.shared.orientation = .portrait
+        }
+    }
+
     // MARK: Helpers
 
     private func shot(_ name: String) {

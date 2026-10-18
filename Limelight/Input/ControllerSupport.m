@@ -29,7 +29,8 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
     
     NSLock *_controllerStreamLock;
     NSMutableDictionary *_controllers;
-    id<ControllerSupportDelegate> _delegate;
+    // Artemis: weak, the stream controller owns this (a strong one kept every session alive)
+    __weak id<ControllerSupportDelegate> _delegate;
     
     float accumulatedDeltaX;
     float accumulatedDeltaY;
