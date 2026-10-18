@@ -8,6 +8,7 @@
 
 #import "StreamConfiguration.h"
 #import "Controller.h"
+#import "GamepadFilter.h"
 
 @class OnScreenControls;
 
@@ -20,6 +21,9 @@
 @end
 
 @interface ControllerSupport : NSObject
+
+/// Artemis: sees each controller's state first and can keep it from the PC (the gamepad mouse).
+@property (nonatomic, weak) id<ArtemisGamepadFilter> gamepadFilter;
 
 -(id) initWithConfig:(StreamConfiguration*)streamConfig delegate:(id<ControllerSupportDelegate>)delegate;
 -(void) connectionEstablished;

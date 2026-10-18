@@ -195,6 +195,11 @@ final class RecordingDesktopInput: NSObject, DesktopInput {
         record("text \(text)")
     }
 
+    /// Something else the demo wants the tests to see (a controller's state going to the PC).
+    func note(_ event: String) {
+        record(event)
+    }
+
     private static func name(_ button: Int32) -> String {
         MouseButton.allCases.first { $0.moonlight == button }?.name ?? "\(button)"
     }

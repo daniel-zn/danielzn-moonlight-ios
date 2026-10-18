@@ -28,6 +28,10 @@ final class ComputerStore {
     /// Bumped when new box art arrives, so the rows load it again.
     private(set) var boxArtRevision = 0
     private(set) var isStreaming = false
+    /// Names given with Rename…, by host UUID (the PC's own name comes back with every poll).
+    private(set) var customNames: [String: String] = [:]
+    /// The app each PC connects to by itself when opened ("Connect Automatically"), by host UUID.
+    private(set) var directLaunch: [String: String] = [:]
 
     /// The host whose games are on screen.
     var selectedHostID: String? {
@@ -44,17 +48,31 @@ final class ComputerStore {
     @ObservationIgnored private let opQueue = OperationQueue()
     @ObservationIgnored private var clientCert: Data?
     @ObservationIgnored private var callbacks: HostCallbacks!
-    @ObservationIgnored private var wakingUntil: [String: Date] = [:]
+    /// PCs being woken: until when, and whether they open once they're up (a tap woke them).
+    @ObservationIgnored private var waking: [String: WakeAttempt] = [:]
+    @ObservationIgnored private var wakeTimer: Timer?
     @ObservationIgnored private var pairingHostID: String?
     @ObservationIgnored private var inBackground = false
     @ObservationIgnored private var started = false
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    /// The PC of the session on screen.
+    @ObservationIgnored private var streamingHostID: String?
+
+    private enum Keys {
+        static let names = "ArtemisPCNames"
+        static let directLaunch = "ArtemisDirectLaunch"
+    }
     /// Presents the stream view; calls the closure once it has been dismissed.
-    @ObservationIgnored var presentStream: ((StreamConfiguration, @escaping () -> Void) -> Void)?
+    @ObservationIgnored var presentStream: ((StreamConfiguration, @escaping (_ connected: Bool) -> Void) -> Void)?
 
     init(demo: Bool) {
         isDemo = demo
         callbacks = HostCallbacks(store: self)
+        // The demo keeps these for the session only, like the rest of its PCs
+        if !demo {
+            customNames = UserDefaults.standard.dictionary(forKey: Keys.names) as? [String: String] ?? [:]
+            directLaunch = UserDefaults.standard.dictionary(forKey: Keys.directLaunch) as? [String: String] ?? [:]
+        }
     }
 
     // MARK: Startup and lifecycle
@@ -62,6 +80,11 @@ final class ComputerStore {
     func start() {
         guard !started else { return }
         started = true
+
+        // Discovery's polls change the hosts on background threads; each change posts this
+        observers.append(NotificationCenter.default.addObserver(forName: .artemisHostUpdated, object: nil, queue: .main) { [weak self] _ in
+            self?.hostsPolled()
+        })
 
         if isDemo {
             for host in DemoData.makeHosts() {
@@ -109,6 +132,7 @@ final class ComputerStore {
 
     private func returnedToForeground() {
         inBackground = false
+        extendWakeDeadlines()
         beginForegroundRefresh()
     }
 
@@ -141,9 +165,45 @@ final class ComputerStore {
         updateShortcuts()
     }
 
+    /// A poll changed a host (its state, name, pairing or running app).
+    private func hostsPolled() {
+        rebuild()
+        updateShortcuts()
+    }
+
     private func rebuild() {
         let now = Date()
-        wakingUntil = wakingUntil.filter { $0.value > now }
+        var opening = false
+        // A woken PC that's up: done waking, and opened if a tap woke it. One that hasn't
+        // come up in time is offline again.
+        for (id, attempt) in waking {
+            guard let host = hosts[id] else {
+                waking[id] = nil
+                continue
+            }
+            if host.state == .online {
+                waking[id] = nil
+                logInfo("\(host.name) is awake")
+                // One at a time: a second PC that came up in the same pass stays on the list
+                if attempt.opensWhenUp && !opening && path.isEmpty && pairing == nil && busyMessage == nil && !isStreaming {
+                    opening = true
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.path.isEmpty, self.busyMessage == nil, self.pairing == nil else { return }
+                        self.open(id)
+                    }
+                }
+            } else if attempt.deadline <= now && !isStreaming && !inBackground {
+                waking[id] = nil
+                let name = customNames[id] ?? host.name
+                alert = AlertInfo(title: "\(name) Didn't Wake Up",
+                                  message: "\(name) didn't come online within \(Int(Self.wakeTimeout)) seconds. Check that it's plugged in and that Wake-on-LAN is turned on in its BIOS and network adapter settings, then try again.",
+                                  showsHelp: true)
+            }
+        }
+        if waking.isEmpty {
+            wakeTimer?.invalidate()
+            wakeTimer = nil
+        }
 
         var newComputers: [Computer] = []
         var newGames: [String: [Game]] = [:]
@@ -158,17 +218,18 @@ final class ComputerStore {
             }
             newComputers.append(Computer(
                 id: host.uuid,
-                name: host.name,
+                name: customNames[host.uuid] ?? host.name,
                 status: status,
                 isPaired: host.pairState == .paired,
-                isWaking: wakingUntil[host.uuid] != nil,
+                isWaking: waking[host.uuid] != nil,
                 canWake: Self.canWake(host),
                 runningGameName: running?.name,
                 gameCount: apps.count,
                 isNvidia: host.isNvidiaServerSoftware))
             newGames[host.uuid] = apps.map { app in
                 Game(hostID: host.uuid, appID: app.id ?? "", name: app.name ?? "",
-                     isHidden: app.hidden, isRunning: running?.id == app.id && running != nil)
+                     isHidden: app.hidden, isRunning: running?.id == app.id && running != nil,
+                     isDirectLaunch: directLaunch[host.uuid] == app.id)
             }
         }
         newComputers.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -215,23 +276,26 @@ final class ComputerStore {
     /// Opens a PC the way the Mac app does: its games when paired, pairing when not,
     /// waking it when it's offline. `userInitiated` false is a refresh (coming back from
     /// a stream or the background, a quick action): no pairing and no error alerts.
-    func open(_ id: String, userInitiated: Bool = true) {
+    /// `launchesAutomatically` false: show the apps without connecting to the PC's
+    /// "Connect Automatically" app (View All Apps, Including Hidden).
+    func open(_ id: String, userInitiated: Bool = true, launchesAutomatically: Bool = true) {
         guard let host = hosts[id] else { return }
+        let autoLaunch = userInitiated && launchesAutomatically
 
         if userInitiated && host.state == .offline {
-            wake(id)
+            wake(id, opensWhenUp: true)
             return
         }
 
         if isDemo {
-            openDemo(host, userInitiated: userInitiated)
+            openDemo(host, userInitiated: userInitiated, autoLaunch: autoLaunch)
             return
         }
 
         // The fast path: online, paired and a cached app list. Not after a stream,
         // where serverinfo has to be fetched again for the running game.
         if userInitiated && host.state == .online && host.pairState == .paired && host.appList.count > 0 {
-            showGames(id)
+            showGames(id, autoLaunch: autoLaunch)
             refreshApps(host)
             return
         }
@@ -276,7 +340,7 @@ final class ComputerStore {
                     self.busyMessage = nil
                     self.rebuild()
                     if userInitiated || self.selectedHostID == id || self.path.isEmpty {
-                        self.showGames(id)
+                        self.showGames(id, autoLaunch: autoLaunch)
                     }
                     self.refreshApps(host)
                 }
@@ -299,9 +363,20 @@ final class ComputerStore {
         }
     }
 
-    private func showGames(_ id: String) {
+    private func showGames(_ id: String, autoLaunch: Bool = false) {
         if selectedHostID != id {
             path = [.games(id)]
+        }
+        // Connect to the PC's "Connect Automatically" app, unless another one is active
+        guard autoLaunch, let appID = directLaunch[id] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            // Still on this PC with nothing else going on, and the app still there
+            guard let self, self.selectedHostID == id, !self.isStreaming, self.busyMessage == nil,
+                  self.pairing == nil, self.alert == nil,
+                  let game = self.gamesByHost[id]?.first(where: { $0.appID == appID }) else { return }
+            if let running = self.runningGame(on: id), running.appID != appID { return }
+            logInfo("Connecting automatically to \(game.name)")
+            self.play(game)
         }
     }
 
@@ -350,7 +425,7 @@ final class ComputerStore {
     fileprivate func pairingStarted(pin: String) {
         guard let id = pairingHostID, let host = hosts[id] else { return }
         busyMessage = nil
-        pairing = PairingInfo(hostID: id, hostName: host.name, pin: pin)
+        pairing = PairingInfo(hostID: id, hostName: customNames[id] ?? host.name, pin: pin)
     }
 
     fileprivate func pairingFailed(_ message: String) {
@@ -391,22 +466,101 @@ final class ComputerStore {
 
     // MARK: Waking, removing, adding
 
-    func wake(_ id: String) {
+    /// Polling was paused (a session, the background): give woken PCs a few polls before
+    /// calling them asleep.
+    private func extendWakeDeadlines() {
+        let soonest = Date().addingTimeInterval(10)
+        for (id, attempt) in waking where attempt.deadline < soonest {
+            waking[id]?.deadline = soonest
+        }
+    }
+
+    /// How long a woken PC has to come up (-ArtemisWakeTimeout for the tests), as on the Mac.
+    static var wakeTimeout: TimeInterval {
+        let value = UserDefaults.standard.double(forKey: "ArtemisWakeTimeout")
+        return value > 0 ? value : 90
+    }
+
+    /// Sends Wake-on-LAN; the row shows "Waking up…" until the PC answers a poll or the time
+    /// runs out. `opensWhenUp`: open it once it's up (a tap on the PC, like a double-click on the Mac).
+    func wake(_ id: String, opensWhenUp: Bool = false) {
         guard let host = hosts[id] else { return }
         guard Self.canWake(host) else {
             alert = AlertInfo(title: "Wake PC", message: "\(host.name) is offline, and Artemis can't wake it because it doesn't know the PC's network address yet. Turn the PC on and pair with it, and Artemis will be able to wake it next time.")
             return
         }
-        if !isDemo {
+        if isDemo {
+            DemoData.simulateWake(host)
+        } else {
             DispatchQueue.global().async {
                 WakeOnLanManager.wake(host)
             }
         }
-        wakingUntil[id] = Date().addingTimeInterval(60)
-        rebuild()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 61) { [weak self] in
-            self?.rebuild()
+        let previous = waking[id]
+        waking[id] = WakeAttempt(deadline: Date().addingTimeInterval(Self.wakeTimeout),
+                                 opensWhenUp: opensWhenUp || (previous?.opensWhenUp ?? false))
+        if !isDemo {
+            // Discovery may be stopped (a failed pairing, the background): the polls bring the state
+            discovery?.resetDiscoveryState()
+            discovery?.startDiscovery()
         }
+        rebuild()
+        // Checks the deadline; the polls bring the PC's state in between
+        if wakeTimer == nil {
+            wakeTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                self?.rebuild()
+            }
+        }
+    }
+
+    /// Rename…: an empty name goes back to the PC's own.
+    func rename(_ id: String, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        customNames[id] = name.isEmpty || name == hosts[id]?.name ? nil : name
+        saveNamesAndDirectLaunch()
+        rebuild()
+        updateShortcuts()
+    }
+
+    private func saveNamesAndDirectLaunch() {
+        guard !isDemo else { return }
+        UserDefaults.standard.set(customNames, forKey: Keys.names)
+        UserDefaults.standard.set(directLaunch, forKey: Keys.directLaunch)
+    }
+
+    /// Get Info: the Mac app's fields.
+    func info(for id: String) -> [(label: String, value: String)] {
+        guard let host = hosts[id] else { return [] }
+        func text(_ value: String?) -> String { (value?.isEmpty ?? true) ? "None" : value! }
+        let state: String
+        switch host.state {
+        case .online: state = "Online"
+        case .offline: state = waking[id] != nil ? "Waking up" : "Offline"
+        default: state = "Unknown"
+        }
+        let pairState: String
+        switch host.pairState {
+        case .paired: pairState = "Paired"
+        case .unpaired: pairState = "Unpaired"
+        default: pairState = "Unknown"
+        }
+        let game = host.currentGame.flatMap { $0 == "0" ? nil : $0 }
+        var rows: [(String, String)] = [("Name", customNames[id] ?? host.name)]
+        if customNames[id] != nil { rows.append(("PC's own name", host.name)) }
+        rows += [
+            ("Status", state),
+            ("Active Address", text(host.activeAddress)),
+            ("UUID", host.uuid),
+            ("Local Address", text(host.localAddress)),
+            ("Remote Address", text(host.externalAddress)),
+            ("IPv6 Address", text(host.ipv6Address)),
+            ("Manual Address", text(host.address)),
+            ("MAC Address", Self.canWake(host) ? host.mac! : "Unknown"),
+            ("Pair State", pairState),
+            ("Running App", game.map { id in Self.runningApp(of: host)?.name.map { "\($0) (\(id))" } ?? id } ?? "None"),
+            ("HTTPS Port", host.httpsPort > 0 ? String(host.httpsPort) : "Unknown"),
+        ]
+        return rows
     }
 
     func remove(_ id: String) {
@@ -417,6 +571,10 @@ final class ComputerStore {
             DataManager().remove(host)
         }
         hosts[id] = nil
+        waking[id] = nil
+        customNames[id] = nil
+        directLaunch[id] = nil
+        saveNamesAndDirectLaunch()
         rebuild()
         updateShortcuts()
     }
@@ -473,20 +631,34 @@ final class ComputerStore {
     /// Launches a game, or resumes it when it's the one running.
     func play(_ game: Game) {
         guard let app = app(game) else { return }
+        streamingHostID = game.hostID
         assetManager?.stopRetrieving()
         logInfo(game.isRunning ? "Resuming application: \(game.name)" : "Launching application: \(game.name)")
         let config = ArtemisBridge.streamConfiguration(for: app)
         guard let presentStream else { return }
         isStreaming = true
         discovery?.stopDiscovery()
-        presentStream(config) { [weak self] in
-            self?.streamEnded()
+        presentStream(config) { [weak self] connected in
+            self?.streamEnded(connected: connected)
         }
     }
 
-    private func streamEnded() {
+    private func streamEnded(connected: Bool) {
         isStreaming = false
         BoxArtCache.shared.removeAll()
+        let hostID = streamingHostID
+        streamingHostID = nil
+        extendWakeDeadlines()
+        // Only a session that connected: a failed one may have hit another client's session
+        if let hostID, connected, AppPreferences.quitAppAfterSession {
+            // The app list refreshes once the app has ended
+            endSessionAfterDisconnect(on: hostID)
+            if !inBackground && !isDemo {
+                discovery?.resetDiscoveryState()
+                discovery?.startDiscovery()
+            }
+            return
+        }
         // Fetch serverinfo again so the running game is right
         if let id = selectedHostID {
             open(id, userInitiated: false)
@@ -522,6 +694,49 @@ final class ComputerStore {
                 }
             }
         }
+    }
+
+    /// Settings › Host PC › End the app on the PC after a session (the Mac's "Quit app on host
+    /// PC after ending stream").
+    private func endSessionAfterDisconnect(on hostID: String) {
+        guard let host = hosts[hostID] else { return }
+        logInfo("Ending the session on \(host.name) after disconnecting")
+        busyMessage = "Ending the session…"
+        if isDemo {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                host.currentGame = "0"
+                self?.busyMessage = nil
+                self?.rebuild()
+            }
+            return
+        }
+        let discovery = self.discovery
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let quit = ArtemisBridge.quitApp(on: host, discovery: discovery)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.busyMessage = nil
+                if !quit {
+                    self.alert = AlertInfo(title: "Couldn't End the Session", message: "The app is still open on \(self.customNames[hostID] ?? host.name).")
+                }
+                if self.selectedHostID == hostID {
+                    self.open(hostID, userInitiated: false)
+                } else {
+                    self.rebuild()
+                }
+            }
+        }
+    }
+
+    /// "Connect Automatically When Opening PC": one app per PC.
+    func setDirectLaunch(_ game: Game, enabled: Bool) {
+        if enabled {
+            directLaunch[game.hostID] = game.appID
+        } else if directLaunch[game.hostID] == game.appID {
+            directLaunch[game.hostID] = nil
+        }
+        saveNamesAndDirectLaunch()
+        rebuild()
     }
 
     // MARK: Box art
@@ -576,15 +791,25 @@ final class ComputerStore {
 
     // MARK: Demo
 
-    private func openDemo(_ host: TemporaryHost, userInitiated: Bool) {
+    private func openDemo(_ host: TemporaryHost, userInitiated: Bool, autoLaunch: Bool) {
         let id: String = host.uuid
         if host.pairState == .paired {
-            showGames(id)
+            showGames(id, autoLaunch: autoLaunch)
         } else if userInitiated {
             pairingHostID = id
             pairingStarted(pin: "4821")
         }
     }
+}
+
+private struct WakeAttempt {
+    var deadline: Date
+    var opensWhenUp: Bool
+}
+
+extension Notification.Name {
+    /// Posted (on any thread) when discovery's poll changes a host; see DiscoveryWorker.
+    static let artemisHostUpdated = NSNotification.Name.ArtemisHostUpdated
 }
 
 /// The Obj-C callback protocols, forwarded to the store on the main thread.

@@ -46,7 +46,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// The saved codec preference: 0 automatic, 1 H.264, 2 HEVC, 3 AV1.
 /// The stream view for a configuration, to present full screen. (StreamFrameViewController's
 /// header can't go in the bridging header: it imports the generated Swift header.)
-+ (UIViewController*) streamViewControllerWithConfiguration:(StreamConfiguration*)config onExit:(void (^)(void))onExit;
++ (UIViewController*) streamViewControllerWithConfiguration:(StreamConfiguration*)config onExit:(void (^)(BOOL connected))onExit;
 
 + (int) codecPreferenceOfSettings:(TemporarySettings*)settings;
 

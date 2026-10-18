@@ -9,6 +9,10 @@
 #import "MDNSManager.h"
 #import "TemporaryHost.h"
 
+/// Posted, on the polling thread, when a poll changes a host's state, name, pair state or
+/// running app (object: the host). The host list callback only reports new hosts.
+extern NSString* const ArtemisHostUpdatedNotification;
+
 @protocol DiscoveryCallback <NSObject>
 
 - (void) updateAllHosts:(NSArray*)hosts;

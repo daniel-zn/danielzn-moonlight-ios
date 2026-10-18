@@ -36,7 +36,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             let stream: UIViewController
             if DemoData.isEnabled && !DemoData.usesRealStream {
                 // A picture of a desktop that records the input instead of a stream
-                stream = DemoDesktopViewController(appName: config.appName ?? "Desktop", onExit: onExit)
+                stream = DemoDesktopViewController(appName: config.appName ?? "Desktop", onExit: { onExit(true) })
             } else {
                 stream = ArtemisBridge.streamViewController(with: config, onExit: onExit)
             }

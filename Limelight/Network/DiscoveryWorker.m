@@ -12,11 +12,14 @@
 #import "ServerInfoResponse.h"
 #import "HttpRequest.h"
 #import "DataManager.h"
+#import "DiscoveryManager.h"
 
 @implementation DiscoveryWorker {
     TemporaryHost* _host;
     NSString* _uniqueId;
 }
+
+NSString* const ArtemisHostUpdatedNotification = @"ArtemisHostUpdated";
 
 static const float POLL_RATE = 2.0f; // Poll every 2 seconds
 
@@ -85,6 +88,10 @@ static const float POLL_RATE = 2.0f; // Poll every 2 seconds
 
 - (void) discoverHost {
     BOOL receivedResponse = NO;
+    State oldState = _host.state;
+    PairState oldPairState = _host.pairState;
+    NSString* oldName = _host.name;
+    NSString* oldGame = _host.currentGame;
     NSArray *addresses = [self getHostAddressList];
     
     Log(LOG_D, @"%@ has %d unique addresses", _host.name, [addresses count]);
@@ -120,6 +127,13 @@ static const float POLL_RATE = 2.0f; // Poll every 2 seconds
     }
 
     _host.state = receivedResponse ? StateOnline : StateOffline;
+    
+    // Tell the UI, which otherwise only hears about new hosts
+    if (_host.state != oldState || _host.pairState != oldPairState ||
+        ![(_host.name ?: @"") isEqualToString:(oldName ?: @"")] ||
+        ![(_host.currentGame ?: @"") isEqualToString:(oldGame ?: @"")]) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:ArtemisHostUpdatedNotification object:_host];
+    }
     if (receivedResponse) {
         Log(LOG_D, @"Received response from: %@\n{\n\t address:%@ \n\t localAddress:%@ \n\t externalAddress:%@ \n\t ipv6Address:%@ \n\t uuid:%@ \n\t mac:%@ \n\t pairState:%d \n\t online:%d \n\t activeAddress:%@ \n}", _host.name, _host.address, _host.localAddress, _host.externalAddress, _host.ipv6Address, _host.uuid, _host.mac, _host.pairState, _host.state, _host.activeAddress);
     }

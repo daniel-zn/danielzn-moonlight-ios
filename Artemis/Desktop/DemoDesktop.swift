@@ -7,6 +7,7 @@
 //  and screenshots.
 //
 
+import QuartzCore
 import UIKit
 
 final class DemoDesktopViewController: UIViewController {
@@ -43,6 +44,19 @@ final class DemoDesktopViewController: UIViewController {
         desktop.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(desktop.view)
         desktop.didMove(toParent: self)
+    }
+
+    private var ranGamepadScript = false
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // A controller for the UI tests (-ArtemisDemoGamepad "<steps>"), see DemoGamepadScript
+        guard !ranGamepadScript, let script = UserDefaults.standard.string(forKey: "ArtemisDemoGamepad") else { return }
+        ranGamepadScript = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            DemoGamepadScript(mouse: self.desktop.gamepadMouse, input: self.input).run(script)
+        }
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
@@ -133,4 +147,104 @@ final class DemoDesktopView: UIImageView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) { touchHandler?.touchesMoved(touches, with: event) }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { touchHandler?.touchesEnded(touches, with: event) }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { touchHandler?.touchesCancelled(touches, with: event) }
+}
+
+/// Plays a controller into the gamepad mouse for the UI tests, on a clock of its own: the
+/// states ControllerSupport would pass it, with the pointer moving at 60 ticks a second.
+/// States that would go to the PC as a gamepad are recorded as "pad <buttons>".
+///
+/// Steps, separated by ";": `press a` (0.05 s), `hold start 0.8`, `left 1 0 0.25` (the left
+/// stick at x 1, y 0 for 0.25 s, then centred), `right 0 1 0.25`, `wait 0.2`, `down start` /
+/// `up start` (a button down or up, for combos).
+/// Buttons: a b x y lb rb start back up down left right.
+final class DemoGamepadScript {
+    private let mouse: GamepadMouse
+    private let input: RecordingDesktopInput
+    private final class Clock {
+        var time: TimeInterval
+        init(time: TimeInterval) { self.time = time }
+    }
+    private var clock: Clock?
+    private var time: TimeInterval = 1000
+    private var buttons: UInt32 = 0
+    private var left = (x: Int16(0), y: Int16(0))
+    private var right = (x: Int16(0), y: Int16(0))
+
+    private static let flags: [String: Int32] = [
+        "a": A_FLAG, "b": B_FLAG, "x": X_FLAG, "y": Y_FLAG, "lb": LB_FLAG, "rb": RB_FLAG,
+        "start": PLAY_FLAG, "back": BACK_FLAG, "up": UP_FLAG, "down": DOWN_FLAG, "left": LEFT_FLAG, "right": RIGHT_FLAG,
+    ]
+
+    init(mouse: GamepadMouse, input: RecordingDesktopInput) {
+        self.mouse = mouse
+        self.input = input
+    }
+
+    func run(_ script: String) {
+        // This script's clock and ticks, and its events in order; back to the real ones after
+        let clock = Clock(time: time)
+        self.clock = clock
+        mouse.drivesItself = false
+        mouse.now = { clock.time }
+        mouse.deliver = { $0() }
+        defer {
+            mouse.drivesItself = true
+            mouse.now = { CACurrentMediaTime() }
+            mouse.deliver = { DispatchQueue.main.async(execute: $0) }
+        }
+        for step in script.split(separator: ";") {
+            let words = step.split(separator: " ").map(String.init)
+            guard let verb = words.first else { continue }
+            let number = { (index: Int) in words.count > index ? Double(words[index]) ?? 0 : 0 }
+            switch verb {
+            case "press", "hold":
+                guard words.count > 1, let flag = Self.flags[words[1]] else { continue }
+                buttons |= UInt32(flag)
+                send()
+                advance(verb == "press" ? 0.05 : number(2))
+                buttons &= ~UInt32(flag)
+                send()
+            case "down", "up":
+                guard words.count > 1, let flag = Self.flags[words[1]] else { continue }
+                if verb == "down" { buttons |= UInt32(flag) } else { buttons &= ~UInt32(flag) }
+                send()
+            case "left", "right":
+                let stick = (x: Self.axis(number(1)), y: Self.axis(number(2)))
+                if verb == "left" { left = stick } else { right = stick }
+                send()
+                advance(number(3))
+                if verb == "left" { left = (0, 0) } else { right = (0, 0) }
+                send()
+            case "wait":
+                advance(number(1))
+            default:
+                continue
+            }
+        }
+    }
+
+    private static func axis(_ value: Double) -> Int16 {
+        Int16(max(-1, min(1, value)) * 32766)
+    }
+
+    private func send() {
+        let result = mouse.filterController(0, buttons: buttons, leftStickX: left.x, leftStickY: left.y,
+                                            rightStickX: right.x, rightStickY: right.y)
+        switch result {
+        case .send: input.note(String(format: "pad 0x%04X", buttons))
+        case .sendNeutral: input.note("pad 0x0000")
+        default: break
+        }
+    }
+
+    private func advance(_ seconds: TimeInterval) {
+        let tick = 1.0 / 60
+        var elapsed = 0.0
+        while elapsed + tick / 2 < seconds {
+            time += tick
+            clock?.time = time
+            elapsed += tick
+            mouse.tick(tick)
+        }
+    }
 }

@@ -39,6 +39,15 @@ Changes from upstream so far:
   connecting opens a picture of a desktop that records the input each gesture sends (`DesktopTests`).
 - Uses the scene lifecycle (`Artemis/App/SceneDelegate.swift`): apps built with the iOS 27 SDK that don't are ended at
   launch.
+- Tapping an asleep PC wakes it (Wake-on-LAN), shows "Waking up…" and opens it once it's up; the status follows
+  discovery's polls (`ArtemisHostUpdatedNotification`), and a PC that doesn't come up in 90 s goes back to Offline
+  with a message.
+- The Mac app's PC and app actions: Rename…, Get Info, Connect Automatically When Opening PC, End the app on the PC
+  after a session, and the rest compared in [docs/PARITY.md](docs/PARITY.md).
+- Game controllers: passed to the PC as gamepads (upstream's ControllerSupport, without the on-screen gamepad), or
+  the PC's mouse while Start / Menu is held for a moment (`Artemis/Desktop/GamepadMouse.swift`, docs/TOUCH.md).
+- In the Games category (App Store Connect and `LSApplicationCategoryType`), with Game Mode (`GCSupportsGameMode`)
+  and extended-gamepad support declared, so the App Store build shows in Apple's Games app.
 - `Scripts/testflight.sh` and `Scripts/asc.py` upload builds to TestFlight (internal testing only).
 - Build from the command line with `-scmProvider system`. If Xcode's own package download hangs on the OpenSSL
   binary, download its zip once into `~/Library/Caches/org.swift.swiftpm/artifacts/` under the URL-derived name

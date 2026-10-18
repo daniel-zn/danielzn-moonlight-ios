@@ -52,6 +52,8 @@ struct Game: Identifiable, Hashable {
     var name: String
     var isHidden: Bool
     var isRunning: Bool
+    /// Connects by itself when its PC is opened.
+    var isDirectLaunch = false
 }
 
 enum Route: Hashable {

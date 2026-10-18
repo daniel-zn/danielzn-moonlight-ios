@@ -147,6 +147,9 @@ struct SettingsPage: View {
     @State private var customHeight = ""
     @State private var askingCustomResolution = false
     @State private var customResolutionNote = false
+    @AppStorage(AppPreferences.Keys.gamepadMouse) private var gamepadMouse = true
+    @AppStorage(AppPreferences.Keys.swapMouseButtons) private var swapMouseButtons = false
+    @AppStorage(AppPreferences.Keys.quitAppAfterSession) private var quitAppAfterSession = false
 
     var body: some View {
         Form {
@@ -300,6 +303,15 @@ struct SettingsPage: View {
         } footer: {
             Note("The PC's audio plays on this iPhone. Turn this off to hear it on the PC too.")
         }
+        Section {
+            Toggle("Enable microphone streaming", isOn: .constant(false))
+                .disabled(true)
+                .accessibilityIdentifier("settings.microphone")
+        } header: {
+            Note("Microphone")
+        } footer: {
+            Note("Coming later: sending this iPhone's microphone to the PC through Apollo, as the Mac app does.")
+        }
     }
 
     @ViewBuilder
@@ -308,6 +320,11 @@ struct SettingsPage: View {
             Toggle("Citrix X1 mouse support", isOn: $settings.btMouseSupport)
         } footer: {
             Note("Use a Citrix X1 Bluetooth mouse during a session. Other mice and keyboards work without this.")
+        }
+        Section {
+            Toggle("Swap left and right mouse buttons", isOn: $swapMouseButtons)
+        } footer: {
+            Note("For a mouse connected to this iPhone. Touch controls are set in Touch & Pointer.")
         }
     }
 
@@ -324,6 +341,19 @@ struct SettingsPage: View {
             Toggle("Swap A/B and X/Y controller buttons", isOn: $settings.swapABXYButtons)
         } footer: {
             Note("This switches controllers into a Nintendo-style button layout.")
+        }
+        Section {
+            Toggle("Mouse control with a controller", isOn: $gamepadMouse)
+                .accessibilityIdentifier("settings.gamepadMouse")
+        } header: {
+            Note("Controller as a Mouse")
+        } footer: {
+            Note("During a session, hold Start (Menu) for a moment to switch the controller between gamepad and mouse. As a mouse: the left stick moves the pointer, the right stick scrolls, A clicks, B right-clicks, X middle-clicks, LB and RB go back and forward, the D-pad scrolls a step, and Y shows the keyboard.")
+        }
+        Section {
+            Text("Xbox, PlayStation and MFi controllers connected to this iPhone work during a session: the PC sees them as gamepads. Press Start, Select, LB and RB together to disconnect.")
+                .artemisFont(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -375,6 +405,12 @@ struct SettingsPage: View {
             Note("Host Settings")
         } footer: {
             Note("Lets the host change an app's settings to suit the session.")
+        }
+        Section {
+            Toggle("End the app on the PC after a session", isOn: $quitAppAfterSession)
+                .accessibilityIdentifier("settings.quitAfterSession")
+        } footer: {
+            Note("When you disconnect, the app closes on the PC too. Unsaved work in it may be lost.")
         }
     }
 

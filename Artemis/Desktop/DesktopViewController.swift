@@ -17,6 +17,8 @@ final class DesktopViewController: UIViewController {
     @objc var onDisconnect: (() -> Void)?
     /// Receives the desktop view's finger touches (StreamView hands them over).
     @objc private(set) lazy var touchHandler = DesktopTouchHandler(controller: self)
+    /// A game controller as the mouse (hold Start / Menu); ControllerSupport hands it each controller's state.
+    @objc let gamepadMouse = GamepadMouse(enabled: AppPreferences.gamepadMouse)
 
     let session: DesktopSession
     private let input: DesktopInput
@@ -30,6 +32,10 @@ final class DesktopViewController: UIViewController {
     private let keyboardSpacer = UIView()
     /// Upright: resets the zoom, on the desktop's corner (landscape has it in the bar).
     private let fitButton = UIButton(configuration: .glass())
+    /// "Controller mouse on / off", for a moment.
+    private let toast = UILabel()
+    private let toastBackground = UIView()
+    private var toastHide: DispatchWorkItem?
     private lazy var barHost = UIHostingController(rootView: ControlBar(session: session))
     private let interpreter = TouchInterpreter()
     /// The demo draws its own pointer; a real stream shows the PC's.
@@ -137,6 +143,22 @@ final class DesktopViewController: UIViewController {
 
         session.actions = makeActions()
 
+        gamepadMouse.output = self
+        gamepadMouse.speed = pointerSettings.pointerSpeed
+        toast.font = ArtemisTypography.headlineFont()
+        toast.textColor = .white
+        toast.textAlignment = .center
+        toast.numberOfLines = 0
+        toast.adjustsFontForContentSizeCategory = true
+        toast.accessibilityIdentifier = "desktop.toast"
+        toastBackground.backgroundColor = UIColor.black.withAlphaComponent(0.72)
+        toastBackground.layer.cornerRadius = 18
+        toastBackground.layer.cornerCurve = .continuous
+        toastBackground.alpha = 0
+        toastBackground.isUserInteractionEnabled = false
+        toastBackground.addSubview(toast)
+        view.addSubview(toastBackground)
+
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardDidHideNotification, object: nil)
         center.addObserver(self, selector: #selector(keyboardChanged), name: UIResponder.keyboardDidShowNotification, object: nil)
@@ -193,6 +215,17 @@ final class DesktopViewController: UIViewController {
         layoutContent()
         fitButton.frame = CGRect(x: canvas.frame.maxX - 52, y: canvas.frame.minY + 8, width: 44, height: 44)
         view.bringSubviewToFront(fitButton)
+        // The notice: padded text in a dark rounded box near the desktop's top
+        let padding = CGSize(width: 22, height: 14)
+        let maxText = max(100, min(canvas.frame.width - 32, 420) - padding.width * 2)
+        // The full width, centred: the typeface measures a little narrower than it draws
+        let text = toast.sizeThatFits(CGSize(width: maxText, height: .greatestFiniteMagnitude))
+        let textSize = CGSize(width: maxText, height: ceil(text.height))
+        toastBackground.bounds = CGRect(x: 0, y: 0, width: textSize.width + padding.width * 2, height: textSize.height + padding.height * 2)
+        toastBackground.center = CGPoint(x: canvas.frame.midX,
+                                         y: max(canvas.frame.minY, view.safeAreaInsets.top) + 12 + toastBackground.bounds.height / 2)
+        toast.frame = CGRect(origin: CGPoint(x: padding.width, y: padding.height), size: textSize)
+        view.bringSubviewToFront(toastBackground)
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
@@ -208,6 +241,7 @@ final class DesktopViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopMomentum()
+        gamepadMouse.stop()
     }
 
     /// The desktop picture's frame in this view, for the connection status over it.
@@ -494,8 +528,9 @@ final class DesktopViewController: UIViewController {
     // MARK: UI tests
 
     func updateAccessibilityValue() {
-        var lines = [String(format: "zoom %.2f · %@ · keyboard %@ · bar %@", scale, session.mode.rawValue,
-                            session.keyboardShown ? "on" : "off", session.barExpanded ? "open" : "folded")]
+        var lines = [String(format: "zoom %.2f · %@ · keyboard %@ · bar %@ · gamepad mouse %@", scale, session.mode.rawValue,
+                            session.keyboardShown ? "on" : "off", session.barExpanded ? "open" : "folded",
+                            gamepadMouse.isActive ? "on" : "off")]
         if let events = recordedEvents?() {
             lines.append("events \(events.count)")
             lines.append(contentsOf: events.suffix(60))
@@ -846,5 +881,55 @@ private final class WeakTarget: NSObject {
             return
         }
         controller.momentumStep(link)
+    }
+}
+
+// MARK: - Controller as the mouse
+
+extension DesktopViewController: GamepadMouseOutput {
+    func gamepadMouseMove(dx: CGFloat, dy: CGFloat) {
+        pointer.x = min(max(pointer.x + dx / streamSize.width, 0), 1)
+        pointer.y = min(max(pointer.y + dy / streamSize.height, 0), 1)
+        sendPointer()
+        followPointer()
+        layoutContent()
+    }
+
+    func gamepadMouseButton(_ button: Int32, down: Bool) {
+        if let known = MouseButton.allCases.first(where: { $0.moonlight == button }) {
+            setButton(known, down: down)
+        } else {
+            input.setButton(button, down: down)
+            updateAccessibilityValue()
+        }
+    }
+
+    func gamepadMouseScroll(vertical: Int, horizontal: Int) {
+        input.scroll(vertical: vertical, horizontal: horizontal)
+        updateAccessibilityValue()
+    }
+
+    func gamepadMouseToggleKeyboard() {
+        toggleKeyboard()
+    }
+
+    func gamepadMouseChanged(active: Bool) {
+        haptic(.medium)
+        showToast(active ? "Controller mouse on\nHold Start or Menu to turn it off" : "Controller mouse off")
+        updateAccessibilityValue()
+    }
+
+    private func showToast(_ text: String) {
+        toastHide?.cancel()
+        toast.text = text
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        UIView.animate(withDuration: 0.2) { self.toastBackground.alpha = 1 }
+        UIAccessibility.post(notification: .announcement, argument: text.replacingOccurrences(of: "\n", with: ". "))
+        let hide = DispatchWorkItem { [weak self] in
+            UIView.animate(withDuration: 0.3) { self?.toastBackground.alpha = 0 }
+        }
+        toastHide = hide
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: hide)
     }
 }

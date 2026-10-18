@@ -107,3 +107,24 @@ Show control bar.
 produce (the desktop's accessibility value). `ArtemisUITests/DesktopTests.swift` performs each gesture and checks
 the events, upright and in landscape; `testTypedPassword` types "Pa55word!" on the iOS keyboard and with Type
 Clipboard and checks both are key events (Shift+P, A, 5, 5, W, O, R, D, Shift+1).
+
+## Game controllers
+
+A controller connected to the iPhone (Xbox, PlayStation, MFi) goes to the PC as a gamepad (upstream's
+`ControllerSupport`; the on-screen gamepad is never shown). Start, Select, LB and RB together disconnect.
+
+**As the mouse.** Hold Start (Menu) for 0.75 s to switch the controller to the mouse; a notice says "Controller
+mouse on". Hold it again to switch back. While it's the mouse, nothing goes to the PC as a gamepad.
+
+| Control | Result |
+|---|---|
+| Left stick | Moves the pointer (squared response past a 15 % dead zone; 1500 px/s at full tilt × the pointer speed) |
+| Right stick | Scrolls, both directions (up to 12 notches a second) |
+| A / B / X | Left / right / middle button (held while held) |
+| LB / RB | Back / forward |
+| D-pad | One scroll step |
+| Y | Shows or hides the keyboard |
+
+Settings › Controllers › Mouse control with a controller (on by default) allows the long press. The mapping is
+`Artemis/Desktop/GamepadMouse.swift`; `ControllerSupport` hands it each controller's state before sending it.
+

@@ -14,6 +14,9 @@ struct ComputersView: View {
     @State private var showingAdd = false
     @State private var showingSettings = false
     @State private var removing: Computer?
+    @State private var renaming: Computer?
+    @State private var newName = ""
+    @State private var showingInfo: Computer?
 
     var body: some View {
         List {
@@ -86,6 +89,19 @@ struct ComputersView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
+        .sheet(item: $showingInfo) { computer in
+            ComputerInfoView(computerID: computer.id)
+        }
+        .alert("Rename \(renaming?.name ?? "PC")", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }),
+               presenting: renaming) { computer in
+            TextField("Name", text: $newName)
+                .accessibilityIdentifier("rename.field")
+            Button("Rename") { store.rename(computer.id, to: newName) }
+                .accessibilityIdentifier("rename.confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Enter the new name for this PC. Leave it empty to use the PC's own name.")
+        }
         .alert(
             "Remove \(removing?.name ?? "PC")?",
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
@@ -102,17 +118,24 @@ struct ComputersView: View {
     private func menu(for computer: Computer) -> some View {
         switch computer.status {
         case .online where computer.isPaired:
-            Button("View Apps", systemImage: "square.grid.2x2") { store.open(computer.id) }
+            Button("Open", systemImage: "square.grid.2x2") { store.open(computer.id) }
             Button("View All Apps, Including Hidden", systemImage: "eye") {
                 store.showingHiddenGames.insert(computer.id)
-                store.open(computer.id)
+                store.open(computer.id, launchesAutomatically: false)
             }
         case .online:
             Button("Pair…", systemImage: "lock.open") { store.open(computer.id) }
         default:
             Button("Wake PC", systemImage: "power") { store.wake(computer.id) }
+                .disabled(!computer.canWake)
         }
-        Button("Test Network", systemImage: "network") { store.testNetwork() }
+        Divider()
+        Button("Test Network…", systemImage: "network") { store.testNetwork() }
+        Button("Rename…", systemImage: "pencil") {
+            newName = computer.name
+            renaming = computer
+        }
+        Button("Get Info", systemImage: "info.circle") { showingInfo = computer }
         if computer.isNvidia {
             Button("NVIDIA GameStream End-of-Service", systemImage: "info.circle") { openURL(Links.gameStreamEndOfService) }
         }
@@ -143,15 +166,29 @@ struct ComputerRow: View {
                 }
             }
             Spacer(minLength: 0)
-            if computer.status == .online && computer.isPaired && !typeSize.isAccessibilitySize {
-                Image(systemName: "chevron.forward")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
+            trailing
         }
         .padding(.vertical, 4)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
+    }
+
+    /// As on the Mac: a spinner while waking or connecting, a moon when asleep, a chevron to open.
+    @ViewBuilder
+    private var trailing: some View {
+        if computer.isWaking && computer.status != .online || computer.status == .unknown {
+            ProgressView()
+                .accessibilityHidden(true)
+        } else if computer.status == .offline {
+            Image(systemName: "moon.zzz.fill")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        } else if computer.status == .online && computer.isPaired && !typeSize.isAccessibilitySize {
+            Image(systemName: "chevron.forward")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
     }
 
     private var icon: some View {

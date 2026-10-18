@@ -20,6 +20,23 @@ enum DemoData {
         UserDefaults.standard.bool(forKey: "ArtemisDemoRealStream")
     }
 
+    /// Seconds until a woken demo PC answers (-ArtemisDemoWakeDelay; a large number for one that never does).
+    static var wakeDelay: Double {
+        // double(forKey:) also reads the launch argument's text
+        UserDefaults.standard.object(forKey: "ArtemisDemoWakeDelay") == nil ? 3 : UserDefaults.standard.double(forKey: "ArtemisDemoWakeDelay")
+    }
+
+    /// A woken demo PC comes up the way discovery sees a real one: its poll (on a background
+    /// thread) changes the host's state and posts ArtemisHostUpdated.
+    static func simulateWake(_ host: TemporaryHost) {
+        let delay = wakeDelay
+        guard delay >= 0 else { return }
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+            host.state = .online
+            NotificationCenter.default.post(name: .artemisHostUpdated, object: host)
+        }
+    }
+
     static func makeHosts() -> [TemporaryHost] {
         let enchilada = host("ENCHILADA", uuid: "demo-enchilada", state: .online, paired: true, mac: "a8:a1:59:12:34:56")
         let games: [(String, String, Bool)] = [

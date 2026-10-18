@@ -21,7 +21,8 @@
 #endif
 @property (nonatomic) StreamConfiguration* streamConfig;
 /// Called once the stream has ended and the view has been dismissed.
-@property (nonatomic, copy) void (^onExit)(void);
+/// Called once the stream view is gone; `connected`: the session got as far as connecting.
+@property (nonatomic, copy) void (^onExit)(BOOL connected);
 
 -(void)updatePreferredDisplayMode:(BOOL)streamActive;
 

@@ -46,6 +46,7 @@
     DesktopViewController *_desktop;
     BOOL _userIsInteracting;
     BOOL _exiting;
+    BOOL _connected;
     CGSize _keyboardSize;
     
 #if !TARGET_OS_TV
@@ -191,6 +192,7 @@
         [weakSelf returnToMainFrame];
     };
     [_streamView useDesktopTouchHandler:_desktop.touchHandler];
+    _controllerSupport.gamepadFilter = _desktop.gamepadMouse;
     __weak DesktopViewController* desktop = _desktop;
     _streamView.pointerMoved = ^(CGPoint normalized) {
         [desktop pointerMovedExternallyTo:normalized];
@@ -333,17 +335,18 @@
     [self cleanupStream];
     
     // Dismiss through the presenter so an alert we're showing goes too
-    void (^onExit)(void) = self.onExit;
+    void (^onExit)(BOOL) = self.onExit;
+    BOOL connected = _connected;
     UIViewController* presenter = self.presentingViewController;
     if (presenter != nil) {
         [presenter dismissViewControllerAnimated:YES completion:^{
             if (onExit != nil) {
-                onExit();
+                onExit(connected);
             }
         }];
     }
     else if (onExit != nil) {
-        onExit();
+        onExit(connected);
     }
 }
 
@@ -402,6 +405,7 @@
 - (void) connectionStarted {
     Log(LOG_I, @"Connection started");
     dispatch_async(dispatch_get_main_queue(), ^{
+        self->_connected = YES;
         // Leave the spinner spinning until it's obscured by
         // the first frame of video.
         self->_stageLabel.hidden = YES;

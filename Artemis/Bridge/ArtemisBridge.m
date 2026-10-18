@@ -199,7 +199,7 @@
     }
 }
 
-+ (UIViewController*) streamViewControllerWithConfiguration:(StreamConfiguration*)config onExit:(void (^)(void))onExit {
++ (UIViewController*) streamViewControllerWithConfiguration:(StreamConfiguration*)config onExit:(void (^)(BOOL connected))onExit {
     StreamFrameViewController* stream = [[StreamFrameViewController alloc] init];
     stream.streamConfig = config;
     stream.onExit = onExit;

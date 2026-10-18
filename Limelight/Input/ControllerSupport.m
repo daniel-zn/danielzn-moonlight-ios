@@ -46,6 +46,8 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
     char _controllerNumbers;
     bool _multiController;
     bool _swapABXYButtons;
+    // Artemis: Settings › Keyboard & Mouse › Swap left and right mouse buttons
+    bool _swapMouseButtons;
 }
 
 // UPDATE_BUTTON_FLAG(controller, flag, pressed)
@@ -354,10 +356,29 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
                 rightStickY = MAX_MAGNITUDE(rightStickY, controller.mergedWithController.lastRightStickY);
             }
             
+            // Artemis: a controller driving the mouse isn't sent as a gamepad
+            id<ArtemisGamepadFilter> filter = self.gamepadFilter;
+            ArtemisGamepadFilterResult result = ArtemisGamepadFilterResultSend;
+            if (filter != nil) {
+                result = [filter filterController:controller.playerIndex
+                                          buttons:buttonFlags
+                                       leftStickX:leftStickX
+                                       leftStickY:leftStickY
+                                      rightStickX:rightStickX
+                                      rightStickY:rightStickY];
+            }
+            if (result == ArtemisGamepadFilterResultSendNeutral) {
+                buttonFlags = 0;
+                leftTrigger = rightTrigger = 0;
+                leftStickX = leftStickY = rightStickX = rightStickY = 0;
+            }
+            
             // Player 1 is always present for OSC
-            LiSendMultiControllerEvent(_multiController ? controller.playerIndex : 0, [self getActiveGamepadMask],
-                                       buttonFlags, leftTrigger, rightTrigger,
-                                       leftStickX, leftStickY, rightStickX, rightStickY);
+            if (result != ArtemisGamepadFilterResultWithhold) {
+                LiSendMultiControllerEvent(_multiController ? controller.playerIndex : 0, [self getActiveGamepadMask],
+                                           buttonFlags, leftTrigger, rightTrigger,
+                                           leftStickX, leftStickY, rightStickX, rightStickY);
+            }
         }
     }
     [_controllerStreamLock unlock];
@@ -862,14 +883,16 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
         }
     };
     
+    int primaryButton = _swapMouseButtons ? BUTTON_RIGHT : BUTTON_LEFT;
+    int secondaryButton = _swapMouseButtons ? BUTTON_LEFT : BUTTON_RIGHT;
     mouse.mouseInput.leftButton.pressedChangedHandler = ^(GCControllerButtonInput * _Nonnull button, float value, BOOL pressed) {
-        LiSendMouseButtonEvent(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE, BUTTON_LEFT);
+        LiSendMouseButtonEvent(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE, primaryButton);
     };
     mouse.mouseInput.middleButton.pressedChangedHandler = ^(GCControllerButtonInput * _Nonnull button, float value, BOOL pressed) {
         LiSendMouseButtonEvent(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE, BUTTON_MIDDLE);
     };
     mouse.mouseInput.rightButton.pressedChangedHandler = ^(GCControllerButtonInput * _Nonnull button, float value, BOOL pressed) {
-        LiSendMouseButtonEvent(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE, BUTTON_RIGHT);
+        LiSendMouseButtonEvent(pressed ? BUTTON_ACTION_PRESS : BUTTON_ACTION_RELEASE, secondaryButton);
     };
     
     if (mouse.mouseInput.auxiliaryButtons != nil) {
@@ -982,9 +1005,11 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
             limeController.supportedEmulationFlags = EMULATING_SPECIAL | EMULATING_SELECT;
             limeController.gamepad = controller;
 
-            // If this is player 0, it shares state with the OSC
-            limeController.mergedWithController = _oscController;
-            _oscController.mergedWithController = limeController;
+            // If this is player 0, it shares state with the OSC (Artemis: there's no OSC)
+            if (_oscEnabled) {
+                limeController.mergedWithController = _oscController;
+                _oscController.mergedWithController = limeController;
+            }
             
             if (@available(iOS 13.0, tvOS 13.0, *)) {
                 if (controller.extendedGamepad != nil &&
@@ -1061,7 +1086,8 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
     // Even if no gamepads are present, we will always count one if OSC is enabled,
     // or it's set to auto and no keyboard or mouse is present. Absolute touch mode
     // disables the OSC.
-    if (level != OnScreenControlsLevelOff && (![ControllerSupport hasKeyboardOrMouse] || level != OnScreenControlsLevelAuto) && !settings.absoluteTouchMode) {
+    // Artemis: never; the on-screen gamepad isn't shown
+    if (NO && level != OnScreenControlsLevelOff && (![ControllerSupport hasKeyboardOrMouse] || level != OnScreenControlsLevelAuto) && !settings.absoluteTouchMode) {
         mask |= 0x1;
     }
     
@@ -1082,13 +1108,15 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
     _controllerNumbers = 0;
     _multiController = streamConfig.multiController;
     _swapABXYButtons = streamConfig.swapABXYButtons;
+    _swapMouseButtons = [[NSUserDefaults standardUserDefaults] boolForKey:@"ArtemisSwapMouseButtons"];
     _delegate = delegate;
 
     _oscController = [[Controller alloc] init];
     _oscController.playerIndex = 0;
 
-    DataManager* dataMan = [[DataManager alloc] init];
-    _oscEnabled = (OnScreenControlsLevel)[[dataMan getSettings].onscreenControls integerValue] != OnScreenControlsLevelOff;
+    // Artemis never shows the on-screen gamepad (StreamView keeps it off), so there's no
+    // virtual controller to merge with a real one or to report as player 1
+    _oscEnabled = NO;
     
     Log(LOG_I, @"Number of supported controllers connected: %d", [ControllerSupport getGamepadCount]);
     Log(LOG_I, @"Multi-controller: %d", _multiController);
@@ -1145,6 +1173,7 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
         }
         
         [self unregisterControllerCallbacks:controller];
+        [self.gamepadFilter controllerDisconnected:controller.playerIndex];
         self->_controllerNumbers &= ~(1 << controller.playerIndex);
         Log(LOG_I, @"Unassigning controller index: %ld", (long)controller.playerIndex);
         

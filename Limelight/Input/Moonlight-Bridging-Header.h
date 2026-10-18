@@ -18,4 +18,5 @@
 #import "OnScreenControls.h"
 #import "../../Artemis/Bridge/ArtemisBridge.h"
 #import "KeyboardSupport.h"
+#import "GamepadFilter.h"
 #include <Limelight.h>

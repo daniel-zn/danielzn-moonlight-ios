@@ -519,7 +519,13 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
                 }
                 
                 if (changedButtons & buttonFlag) {
-                    LiSendMouseButtonEvent(buttonAction, i);
+                    int button = i;
+                    // Artemis: Settings › Keyboard & Mouse › Swap left and right mouse buttons
+                    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"ArtemisSwapMouseButtons"]) {
+                        if (button == BUTTON_LEFT) button = BUTTON_RIGHT;
+                        else if (button == BUTTON_RIGHT) button = BUTTON_LEFT;
+                    }
+                    LiSendMouseButtonEvent(buttonAction, button);
                 }
             }
             

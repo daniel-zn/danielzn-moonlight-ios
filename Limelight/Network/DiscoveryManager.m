@@ -286,7 +286,10 @@
             existingHost.externalAddress = host.externalAddress;
         }
         existingHost.activeAddress = host.activeAddress;
-        existingHost.state = host.state;
+        if (existingHost.state != host.state) {
+            existingHost.state = host.state;
+            [[NSNotificationCenter defaultCenter] postNotificationName:ArtemisHostUpdatedNotification object:existingHost];
+        }
         return NO;
     }
     else {

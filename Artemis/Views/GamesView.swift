@@ -30,13 +30,16 @@ struct GamesView: View {
             ForEach(games) { game in
                 GameRow(game: game, onTap: { tapped(game) }, onResume: { store.play(game) }, onEnd: { ending = game })
                 .contextMenu { menu(for: game) } preview: {
+                    // The preview is drawn outside this view: it gets the store explicitly, or
+                    // re-rendering it after a menu action finds no store in its environment
                     BoxArtView(game: game)
                         .frame(width: 240, height: 320)
+                        .environment(store)
                 }
                 .swipeActions(edge: .trailing) {
                     if game.isRunning {
                         Button("End Session", systemImage: "stop.fill", role: .destructive) { ending = game }
-                    } else {
+                    } else if !game.isDirectLaunch || game.isHidden {
                         Button(game.isHidden ? "Show" : "Hide", systemImage: game.isHidden ? "eye" : "eye.slash") {
                             store.setHidden(game, hidden: !game.isHidden)
                         }
@@ -132,9 +135,18 @@ struct GamesView: View {
             Button("End Session", systemImage: "stop.fill", role: .destructive) { ending = game }
         } else {
             Button("Connect", systemImage: "play.fill") { tapped(game) }
+        }
+        Divider()
+        // As on the Mac: a hidden app can't connect by itself, and that app can't be hidden
+        Toggle(isOn: Binding(get: { game.isDirectLaunch }, set: { store.setDirectLaunch(game, enabled: $0) })) {
+            Label("Connect Automatically When Opening PC", systemImage: "bolt.fill")
+        }
+        .disabled(game.isHidden)
+        if !game.isRunning {
             Button(game.isHidden ? "Show App" : "Hide App", systemImage: game.isHidden ? "eye" : "eye.slash") {
                 store.setHidden(game, hidden: !game.isHidden)
             }
+            .disabled(game.isDirectLaunch && !game.isHidden)
         }
     }
 }
@@ -195,6 +207,12 @@ struct GameRow: View {
                 Label("Hidden", systemImage: "eye.slash")
                     .artemisFont(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if game.isDirectLaunch {
+                Label("Connects automatically", systemImage: "bolt.fill")
+                    .artemisFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("game.directLaunch")
             }
         }
     }
