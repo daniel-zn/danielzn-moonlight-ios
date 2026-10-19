@@ -49,6 +49,14 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
     bool _swapABXYButtons;
     // Artemis: Settings › Keyboard & Mouse › Swap left and right mouse buttons
     bool _swapMouseButtons;
+    // Artemis: the on-screen gamepad, a controller of its own (shown, its number, arrival sent)
+    bool _virtualActive;
+    int _virtualNumber;
+    bool _virtualArrived;
+    // Without multiple controllers it shares player 1 with the connected ones: its state and
+    // theirs as last sent, merged both ways so neither releases what the other holds
+    ArtemisPadState _virtualState;
+    ArtemisPadState _physicalSent;
 }
 
 // UPDATE_BUTTON_FLAG(controller, flag, pressed)
@@ -56,6 +64,15 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
 ((y) ? [self setButtonFlag:controller flags:x] : [self clearButtonFlag:controller flags:x])
 
 #define MAX_MAGNITUDE(x, y) (abs(x) > abs(y) ? (x) : (y))
+
+static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
+    ArtemisPadState merged = {
+        a.buttons | b.buttons, MAX(a.leftTrigger, b.leftTrigger), MAX(a.rightTrigger, b.rightTrigger),
+        MAX_MAGNITUDE(a.leftStickX, b.leftStickX), MAX_MAGNITUDE(a.leftStickY, b.leftStickY),
+        MAX_MAGNITUDE(a.rightStickX, b.rightStickX), MAX_MAGNITUDE(a.rightStickY, b.rightStickY),
+    };
+    return merged;
+}
 
 -(void) rumble:(unsigned short)controllerNumber lowFreqMotor:(unsigned short)lowFreqMotor highFreqMotor:(unsigned short)highFreqMotor
 {
@@ -321,7 +338,77 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
 
 -(uint16_t) getActiveGamepadMask
 {
-    return (_multiController ? _controllerNumbers : 1) | (_oscEnabled ? 1 : 0);
+    return (_multiController ? _controllerNumbers : 1) | (_oscEnabled ? 1 : 0) |
+        (_virtualActive ? (1 << _virtualNumber) : 0);
+}
+
+// Artemis: the on-screen gamepad (DesktopViewController) as an Xbox controller. With
+// multiple controllers it takes the first player number no connected controller has, and
+// controllers connecting later skip it; without, it's player 1 like every controller.
+-(void) connectVirtualGamepad
+{
+    [_controllerStreamLock lock];
+    if (!_virtualActive) {
+        int number = 0;
+        if (_multiController) {
+            while (number < 4 && (_controllerNumbers & (1 << number))) {
+                number++;
+            }
+        }
+        _virtualNumber = number;
+        _virtualActive = YES;
+        _virtualArrived = NO;
+        memset(&_virtualState, 0, sizeof(_virtualState));
+        Log(LOG_I, @"On-screen gamepad: controller %d", number);
+    }
+    [_controllerStreamLock unlock];
+}
+
+-(void) sendVirtualGamepadButtons:(uint32_t)buttons leftTrigger:(uint8_t)leftTrigger rightTrigger:(uint8_t)rightTrigger
+                       leftStickX:(int16_t)leftStickX leftStickY:(int16_t)leftStickY
+                      rightStickX:(int16_t)rightStickX rightStickY:(int16_t)rightStickY
+{
+    [_controllerStreamLock lock];
+    if (_virtualActive) {
+        // Arrival once (it fails until the connection is up: tried again with the next state).
+        // Without multiple controllers, a connected controller already announced player 1.
+        if (!_virtualArrived && (_multiController || _controllers.count == 0)) {
+            _virtualArrived = LiSendControllerArrivalEvent(_virtualNumber, [self getActiveGamepadMask], LI_CTYPE_XBOX,
+                                                           PLAY_FLAG | BACK_FLAG | UP_FLAG | DOWN_FLAG | LEFT_FLAG | RIGHT_FLAG |
+                                                           LB_FLAG | RB_FLAG | A_FLAG | B_FLAG | X_FLAG | Y_FLAG | SPECIAL_FLAG,
+                                                           0) == 0;
+        }
+        ArtemisPadState state = { buttons, leftTrigger, rightTrigger, leftStickX, leftStickY, rightStickX, rightStickY };
+        _virtualState = state;
+        if (!_multiController && _controllers.count > 0) {
+            state = ArtemisPadMerge(state, _physicalSent);
+        }
+        LiSendMultiControllerEvent(_virtualNumber, [self getActiveGamepadMask], state.buttons, state.leftTrigger, state.rightTrigger,
+                                   state.leftStickX, state.leftStickY, state.rightStickX, state.rightStickY);
+    }
+    [_controllerStreamLock unlock];
+}
+
+-(void) disconnectVirtualGamepad
+{
+    [_controllerStreamLock lock];
+    if (_virtualActive) {
+        _virtualActive = NO;
+        memset(&_virtualState, 0, sizeof(_virtualState));
+        if (!_multiController && _controllers.count > 0) {
+            // Player 1 stays, holding what the connected controllers hold
+            ArtemisPadState held = _physicalSent;
+            LiSendMultiControllerEvent(0, [self getActiveGamepadMask], held.buttons, held.leftTrigger, held.rightTrigger,
+                                       held.leftStickX, held.leftStickY, held.rightStickX, held.rightStickY);
+        }
+        else {
+            // At rest, and without its bit in the mask: the PC removes it (player 1 stays without
+            // multiple controllers, as upstream keeps it)
+            LiSendMultiControllerEvent(_virtualNumber, [self getActiveGamepadMask], 0, 0, 0, 0, 0, 0, 0);
+        }
+        Log(LOG_I, @"On-screen gamepad gone");
+    }
+    [_controllerStreamLock unlock];
 }
 
 -(void) updateFinished:(Controller*)controller
@@ -376,6 +463,21 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
             
             // Player 1 is always present for OSC
             if (result != ArtemisGamepadFilterResultWithhold) {
+                // Artemis: player 1 shared with the on-screen gamepad holds both
+                if (!_multiController) {
+                    ArtemisPadState sent = { buttonFlags, leftTrigger, rightTrigger, leftStickX, leftStickY, rightStickX, rightStickY };
+                    _physicalSent = sent;
+                    if (_virtualActive) {
+                        sent = ArtemisPadMerge(sent, _virtualState);
+                        buttonFlags = sent.buttons;
+                        leftTrigger = sent.leftTrigger;
+                        rightTrigger = sent.rightTrigger;
+                        leftStickX = sent.leftStickX;
+                        leftStickY = sent.leftStickY;
+                        rightStickX = sent.rightStickX;
+                        rightStickY = sent.rightStickY;
+                    }
+                }
                 LiSendMultiControllerEvent(_multiController ? controller.playerIndex : 0, [self getActiveGamepadMask],
                                            buttonFlags, leftTrigger, rightTrigger,
                                            leftStickX, leftStickY, rightStickX, rightStickY);
@@ -997,7 +1099,9 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
 
 -(Controller*) assignController:(GCController*)controller {
     for (int i = 0; i < 4; i++) {
-        if (!(_controllerNumbers & (1 << i))) {
+        // Artemis: not the on-screen gamepad's number
+        bool virtualHasIt = _virtualActive && _multiController && _virtualNumber == i;
+        if (!(_controllerNumbers & (1 << i)) && !virtualHasIt) {
             _controllerNumbers |= (1 << i);
             controller.playerIndex = i;
             
@@ -1198,6 +1302,10 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
             // Inform the server of the updated active gamepads before removing this controller
             [self updateFinished:limeController];
             [self->_controllers removeObjectForKey:[NSNumber numberWithInteger:controller.playerIndex]];
+            // Artemis: what it held no longer merges with the on-screen gamepad
+            [self->_controllerStreamLock lock];
+            memset(&self->_physicalSent, 0, sizeof(self->_physicalSent));
+            [self->_controllerStreamLock unlock];
             
             // Re-evaluate the on-screen control mode
             [self updateAutoOnScreenControlMode];
@@ -1278,6 +1386,7 @@ static const double MOUSE_SPEED_DIVISOR = 1.25;
     _keyboardDisconnectObserver = nil;
     
     _controllerNumbers = 0;
+    _virtualActive = NO;
     
     for (Controller* controller in [_controllers allValues]) {
         [self cleanupControllerHaptics:controller];

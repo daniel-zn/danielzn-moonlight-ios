@@ -19,4 +19,5 @@
 #import "../../Artemis/Bridge/ArtemisBridge.h"
 #import "KeyboardSupport.h"
 #import "GamepadFilter.h"
+#import "ControllerSupport.h"
 #include <Limelight.h>

@@ -148,6 +148,8 @@ struct SettingsPage: View {
     @State private var askingCustomResolution = false
     @State private var customResolutionNote = false
     @AppStorage(AppPreferences.Keys.gamepadMouse) private var gamepadMouse = true
+    @AppStorage(AppPreferences.Keys.onScreenGamepadSize) private var onScreenGamepadSize = PadLayout.defaultSize
+    @AppStorage(AppPreferences.Keys.onScreenGamepadOpacity) private var onScreenGamepadOpacity = 0.85
     @AppStorage(AppPreferences.Keys.swapMouseButtons) private var swapMouseButtons = false
     @AppStorage(AppPreferences.Keys.quitAppAfterSession) private var quitAppAfterSession = false
 
@@ -349,6 +351,31 @@ struct SettingsPage: View {
             Note("Controller as a Mouse")
         } footer: {
             Note("During a session, hold Start (Menu) for a moment to switch the controller between gamepad and mouse. As a mouse: the left stick moves the pointer, the right stick scrolls, A clicks, B right-clicks, X middle-clicks, LB and RB go back and forward, the D-pad scrolls a step, and Y shows the keyboard.")
+        }
+        Section {
+            Picker("Size", selection: $onScreenGamepadSize) {
+                ForEach(PadLayout.sizes, id: \.scale) { size in
+                    Text(size.name).tag(size.scale)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.gamepadSize")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Opacity over the desktop")
+                Slider(value: $onScreenGamepadOpacity, in: 0.3...1) {
+                    Text("Opacity over the desktop")
+                } minimumValueLabel: {
+                    Image(systemName: "circle.dotted").accessibilityHidden(true)
+                } maximumValueLabel: {
+                    Image(systemName: "circle.fill").accessibilityHidden(true)
+                }
+                .accessibilityValue("\(Int((onScreenGamepadOpacity * 100).rounded())) percent")
+                .accessibilityIdentifier("settings.gamepadOpacity")
+            }
+        } header: {
+            Note("On-Screen Controller")
+        } footer: {
+            Note("The control bar's controller button shows a game controller on the screen; the PC sees it as an Xbox controller. Upright it takes the trackpad's place; in landscape it lies over the desktop.")
         }
         Section {
             Text("Xbox, PlayStation and MFi controllers connected to this iPhone work during a session: the PC sees them as gamepads. Press Start, Select, LB and RB together to disconnect.")

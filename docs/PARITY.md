@@ -5,7 +5,7 @@ native Mac interface) does, and how Artemis on the iPhone does the same. Mac lab
 (`app/gui/PcView.qml`, `AppView.qml`, `MacMenuBar.qml`, `SettingsView.qml`); the iPhone words them for a remote
 desktop (apps rather than games, a session rather than a stream). Checked against the Mac app's `main` on 2026-10-17.
 
-✅ done · ➖ not on iPhone (why) · 🔜 later
+✅ done · ➖ not on iPhone (why) · 🔜 later · ➕ iPhone only
 
 ## Computers
 
@@ -107,7 +107,8 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 | Mac | iPhone | |
 |---|---|---|
 | Keyboard, mouse | Touch controls (docs/TOUCH.md), the iOS keyboard with a key row, hardware keyboards and mice | ✅ |
-| Gamepads passed to the PC | Xbox, PlayStation and MFi controllers (GameController): buttons, sticks, triggers, rumble, motion, touchpad, battery, LED; the on-screen gamepad stays off | ✅ |
+| Gamepads passed to the PC | Xbox, PlayStation and MFi controllers (GameController): buttons, sticks, triggers, rumble, motion, touchpad, battery, LED (upstream's on-screen controls stay off) | ✅ |
+| ➖ (no touch screen) | On-screen controller from the control bar: an Xbox controller on the PC; in the trackpad's place upright, over the desktop in landscape; size and opacity in Settings › Controllers | ➕ |
 | Gamepad mouse: hold Start 0.75 s; stick moves, A/B/X click, LB/RB back/forward, D-pad scrolls; "Gamepad mouse mode active" notice | Same, plus the right stick scrolls and Y opens the keyboard; "Controller mouse on" notice | ✅ |
 | Start+Select+L1+R1 disconnects | Same | ✅ |
 | Select+L1+R1+X stats overlay | ➖ not in upstream iOS (setting in Video & Display) | ➖ |

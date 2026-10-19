@@ -28,6 +28,8 @@ final class DesktopSession {
     var keyboardShown = false
     var barExpanded: Bool
     var isPortrait = false
+    /// The on-screen controller is up (each session starts without it).
+    var gamepadShown = false
     var keyPage = KeyPage.main
     var modifiers: [Modifier: ModifierState] = [:]
 
@@ -37,7 +39,7 @@ final class DesktopSession {
     struct Actions {
         var toggleKeyboard: () -> Void = {}
         var setMode: (PointerMode) -> Void = { _ in }
-        var rightClick: () -> Void = {}
+        var toggleGamepad: () -> Void = {}
         var resetZoom: () -> Void = {}
         var shortcut: (Shortcut) -> Void = { _ in }
         var typeClipboard: () -> Void = {}

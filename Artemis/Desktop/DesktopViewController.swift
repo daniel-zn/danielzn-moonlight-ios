@@ -4,7 +4,8 @@
 //
 //  The connected screen's controls around the desktop (docs/TOUCH.md): the desktop view
 //  (upstream's StreamView, or the demo picture) in a zoomable canvas, the touch gestures,
-//  the control bar, the keyboard with its key row, and the trackpad area when upright.
+//  the control bar, the keyboard with its key row, the trackpad area when upright, and the
+//  on-screen controller.
 //  StreamFrameViewController keeps the connection; this sends the input.
 //
 
@@ -28,6 +29,8 @@ final class DesktopViewController: UIViewController {
 
     private let canvas = DesktopCanvasView()
     private let trackpadArea = TrackpadAreaView()
+    /// The on-screen controller: in the trackpad's place upright, over the desktop in landscape.
+    private let gamepad = OnScreenGamepadView()
     private let keyCapture = KeyCaptureView()
     /// Upright: resets the zoom, on the desktop's corner (landscape has it in the bar).
     private let fitButton = UIButton(configuration: .glass())
@@ -54,6 +57,8 @@ final class DesktopViewController: UIViewController {
 
     /// The floating bar's centre, as a fraction of the screen (landscape).
     private var barCenter: CGPoint
+    /// Its centre while the controller is over the desktop (nil: top centre, between the controls).
+    private var gamepadBarCenter: CGPoint?
     private var barDragStart: CGPoint?
 
     /// Called when the demo's recorded input or the view's state changes (UI tests).
@@ -68,6 +73,7 @@ final class DesktopViewController: UIViewController {
         session = DesktopSession(title: title, mode: absolute ? .direct : .trackpad, barExpanded: pointer.showControlBar)
         let saved = UserDefaults.standard.string(forKey: "ArtemisBarCenter").map(NSCoder.cgPoint(for:))
         barCenter = saved ?? CGPoint(x: 0.5, y: 0.92)
+        gamepadBarCenter = UserDefaults.standard.string(forKey: "ArtemisGamepadBarCenter").map(NSCoder.cgPoint(for:))
         self.localCursor = localCursor ? UIImageView(image: DesktopViewController.cursorImage) : nil
         super.init(nibName: nil, bundle: nil)
     }
@@ -107,11 +113,17 @@ final class DesktopViewController: UIViewController {
         view.addSubview(fitButton)
 
         trackpadArea.touchHandler = touchHandler
-        trackpadArea.onButton = { [weak self] button, down in
-            self?.setButton(button, down: down)
-            if down { self?.haptic(.light) }
-        }
         view.addSubview(trackpadArea)
+
+        gamepad.isHidden = true
+        gamepad.accessibilityIdentifier = "gamepad"
+        gamepad.model.onChange = { [weak self] held in
+            self?.input.gamepad(held.gamepadState)
+            self?.updateAccessibilityValue()
+        }
+        addChild(gamepad.host)
+        view.addSubview(gamepad)
+        gamepad.host.didMove(toParent: self)
 
         keyCapture.onText = { [weak self] in self?.typed($0) }
         keyCapture.onDelete = { [weak self] in self?.sendKey(KeyCode.backspace) }
@@ -180,27 +192,42 @@ final class DesktopViewController: UIViewController {
         }
         let barSize = barHost.sizeThatFits(in: CGSize(width: portrait ? bounds.width : bounds.width - insets.left - insets.right,
                                                       height: bounds.height))
+        let padSize = AppPreferences.onScreenGamepadSize
         if portrait {
-            // The desktop across the top, the bar under it, then the trackpad
+            // The desktop across the top, the trackpad (or the controller) under it, the bar at the bottom
             let aspect = streamSize.width / streamSize.height
-            let available = max(120, bounds.maxY - insets.top - barSize.height - 16)
+            let barY = bounds.maxY - max(insets.bottom, 12) - barSize.height
+            let available = max(120, barY - insets.top - 16)
             let height = min(bounds.width / aspect, available)
             canvas.frame = CGRect(x: 0, y: insets.top, width: bounds.width, height: height)
-            barHost.view.frame = CGRect(x: 0, y: canvas.frame.maxY + 8, width: bounds.width, height: barSize.height)
-            let areaTop = barHost.view.frame.maxY + 10
-            let areaBottom = bounds.maxY - max(insets.bottom, 12)
-            trackpadArea.isHidden = areaBottom - areaTop < 60
-            trackpadArea.frame = CGRect(x: 12, y: areaTop, width: bounds.width - 24, height: max(0, areaBottom - areaTop))
+            barHost.view.frame = CGRect(x: 0, y: barY, width: bounds.width, height: barSize.height)
+            let areaTop = canvas.frame.maxY + 10
+            let areaBottom = barY - 10
+            let area = CGRect(x: 12, y: areaTop, width: bounds.width - 24, height: max(0, areaBottom - areaTop))
+            trackpadArea.isHidden = area.height < 60 || session.gamepadShown
+            trackpadArea.frame = area
+            gamepad.frame = area
+            gamepad.isHidden = !session.gamepadShown || area.height < 60
+            gamepad.layout(landscape: false, safe: gamepad.bounds, scale: padSize, opacity: 1)
         } else {
-            // Full screen
+            // Full screen; the controller lies over it, inside the safe area
             canvas.frame = bounds
             trackpadArea.isHidden = true
+            gamepad.frame = bounds
+            gamepad.isHidden = !session.gamepadShown
+            let safe = CGRect(x: insets.left + 12, y: max(insets.top, 10),
+                              width: bounds.width - insets.left - insets.right - 24,
+                              height: bounds.height - max(insets.top, 10) - max(insets.bottom, 10))
+            gamepad.layout(landscape: true, safe: safe, scale: padSize, opacity: AppPreferences.onScreenGamepadOpacity)
+            let wanted = session.gamepadShown
+                ? gamepadBarCenter ?? PadLayout.barCenter(safe: safe, bounds: bounds.size, barHeight: barSize.height, scale: padSize)
+                : barCenter
             let minX = insets.left + barSize.width / 2 + 8
             let maxX = bounds.width - insets.right - barSize.width / 2 - 8
             let minY = max(insets.top, 8) + barSize.height / 2
             let maxY = bounds.height - max(insets.bottom, 8) - barSize.height / 2
-            let center = CGPoint(x: min(max(barCenter.x * bounds.width, minX), max(minX, maxX)),
-                                 y: min(max(barCenter.y * bounds.height, minY), max(minY, maxY)))
+            let center = CGPoint(x: min(max(wanted.x * bounds.width, minX), max(minX, maxX)),
+                                 y: min(max(wanted.y * bounds.height, minY), max(minY, maxY)))
             barHost.view.bounds = CGRect(origin: .zero, size: barSize)
             barHost.view.center = center
         }
@@ -235,6 +262,7 @@ final class DesktopViewController: UIViewController {
         super.viewWillDisappear(animated)
         stopMomentum()
         gamepadMouse.stop()
+        setGamepad(false)
     }
 
     /// The desktop picture's frame in this view, for the connection status over it.
@@ -436,6 +464,26 @@ final class DesktopViewController: UIViewController {
 
     private var keyRowHost: UIViewController?
 
+    // MARK: On-screen controller
+
+    /// Shows the controller (the PC gets an Xbox controller, at rest) or hides it (everything
+    /// comes up, then the controller goes away on the PC). Each session starts with it hidden.
+    private func setGamepad(_ shown: Bool) {
+        guard session.gamepadShown != shown else { return }
+        if shown {
+            session.gamepadShown = true
+            input.gamepadConnect()
+            input.gamepad(PadHeld.idle.gamepadState)
+        } else {
+            gamepad.releaseAll()
+            session.gamepadShown = false
+            input.gamepadDisconnect()
+        }
+        view.setNeedsLayout()
+        relayoutBar()
+        updateAccessibilityValue()
+    }
+
     // MARK: Control bar
 
     /// Sizes the bar again after its content changed. SwiftUI updates the content on its next
@@ -465,9 +513,10 @@ final class DesktopViewController: UIViewController {
             self?.relayoutBar()
             self?.updateAccessibilityValue()
         }
-        actions.rightClick = { [weak self] in
-            self?.click(.right)
-            self?.haptic(.medium)
+        actions.toggleGamepad = { [weak self] in
+            guard let self else { return }
+            self.setGamepad(!self.session.gamepadShown)
+            self.haptic(.light)
         }
         actions.resetZoom = { [weak self] in self?.resetZoomAnimated() }
         actions.shortcut = { [weak self] shortcut in
@@ -490,6 +539,7 @@ final class DesktopViewController: UIViewController {
         }
         actions.disconnect = { [weak self] in
             self?.stopMomentum()
+            self?.setGamepad(false)
             self?.setKeyboard(false)
             self?.onDisconnect?()
         }
@@ -498,17 +548,24 @@ final class DesktopViewController: UIViewController {
             let bounds = self.view.bounds
             let start = self.barDragStart ?? CGPoint(x: self.barHost.view.center.x / bounds.width, y: self.barHost.view.center.y / bounds.height)
             self.barDragStart = start
-            self.barCenter = CGPoint(x: start.x + translation.width / bounds.width, y: start.y + translation.height / bounds.height)
+            let center = CGPoint(x: start.x + translation.width / bounds.width, y: start.y + translation.height / bounds.height)
+            if self.session.gamepadShown { self.gamepadBarCenter = center } else { self.barCenter = center }
             self.view.setNeedsLayout()
             self.view.layoutIfNeeded()
         }
         actions.endMoveBar = { [weak self] in
             guard let self else { return }
             self.barDragStart = nil
-            // Remember where it ended up (clamped inside the screen)
+            // Remember where it ended up (clamped inside the screen), with the controller up or not
             let bounds = self.view.bounds
-            self.barCenter = CGPoint(x: self.barHost.view.center.x / bounds.width, y: self.barHost.view.center.y / bounds.height)
-            UserDefaults.standard.set(NSCoder.string(for: self.barCenter), forKey: "ArtemisBarCenter")
+            let center = CGPoint(x: self.barHost.view.center.x / bounds.width, y: self.barHost.view.center.y / bounds.height)
+            if self.session.gamepadShown {
+                self.gamepadBarCenter = center
+                UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisGamepadBarCenter")
+            } else {
+                self.barCenter = center
+                UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisBarCenter")
+            }
         }
         actions.setBarExpanded = { [weak self] expanded in
             self?.session.barExpanded = expanded
@@ -525,6 +582,7 @@ final class DesktopViewController: UIViewController {
                             session.keyboardShown ? "on" : "off", session.barExpanded ? "open" : "folded",
                             gamepadMouse.isActive ? "on" : "off")]
         lines[0] += " · edges " + Self.describe(deferredEdges)
+        lines[0] += " · on-screen controller " + (session.gamepadShown ? "shown" : "hidden")
         if let events = recordedEvents?() {
             lines.append("events \(events.count)")
             lines.append(contentsOf: events.suffix(60))
@@ -535,7 +593,8 @@ final class DesktopViewController: UIViewController {
     // MARK: Status bar, orientation
 
     /// The edges iOS defers system gestures on right now: those of the controller it asks
-    /// (the topmost presented one, then its children as they forward the question).
+    /// (the topmost presented one, then its children as they forward the question). None:
+    /// one swipe opens Notification or Control Centre, or goes home, as in any app.
     var deferredEdges: UIRectEdge {
         var controller = view.window?.rootViewController
         while let presented = controller?.presentedViewController, !presented.isBeingDismissed {
@@ -770,14 +829,11 @@ final class DesktopCanvasView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { touchHandler?.touchesCancelled(touches, with: event) }
 }
 
-/// Upright, under the desktop: a trackpad with left and right buttons.
+/// Upright, under the desktop: a trackpad (its taps click; two fingers right-click).
 final class TrackpadAreaView: UIView {
     weak var touchHandler: DesktopTouchHandler?
-    var onButton: ((MouseButton, Bool) -> Void)?
     private let hint = UILabel()
     private let icon = UIImageView(image: UIImage(systemName: "rectangle.and.hand.point.up.left"))
-    private let left = UIButton(configuration: .glass())
-    private let right = UIButton(configuration: .glass())
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -797,18 +853,6 @@ final class TrackpadAreaView: UIView {
         hint.adjustsFontForContentSizeCategory = false
         addSubview(icon)
         addSubview(hint)
-
-        for (button, title, which) in [(left, "Left", MouseButton.left), (right, "Right", MouseButton.right)] {
-            var configuration = UIButton.Configuration.glass()
-            configuration.attributedTitle = AttributedString(title, attributes: AttributeContainer([.font: Typography.uiFont(.subheadline, sizeCategory: .large)]))
-            configuration.baseForegroundColor = .label
-            button.configuration = configuration
-            button.accessibilityLabel = "\(title) Click"
-            button.accessibilityIdentifier = "trackpad.\(which.name)"
-            button.addAction(UIAction { [weak self] _ in self?.onButton?(which, true) }, for: .touchDown)
-            button.addAction(UIAction { [weak self] _ in self?.onButton?(which, false) }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
-            addSubview(button)
-        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -816,20 +860,9 @@ final class TrackpadAreaView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         hint.font = Typography.uiFont(.footnote, sizeCategory: .large)
-        let buttonHeight: CGFloat = bounds.height > 170 ? 56 : 0
-        let gap: CGFloat = 8
-        let inset: CGFloat = 10
-        let half = (bounds.width - inset * 2 - gap) / 2
-        left.isHidden = buttonHeight == 0
-        right.isHidden = buttonHeight == 0
-        left.frame = CGRect(x: inset, y: bounds.height - inset - buttonHeight, width: half, height: buttonHeight)
-        right.frame = CGRect(x: inset + half + gap, y: left.frame.minY, width: half, height: buttonHeight)
-        let padTop = bounds.minY
-        let padBottom = buttonHeight > 0 ? left.frame.minY : bounds.maxY
-        let mid = (padTop + padBottom) / 2
-        icon.frame = CGRect(x: bounds.midX - 24, y: mid - 30, width: 48, height: 36)
-        hint.frame = CGRect(x: 0, y: mid + 10, width: bounds.width, height: 22)
-        icon.isHidden = padBottom - padTop < 90
+        icon.frame = CGRect(x: bounds.midX - 24, y: bounds.midY - 30, width: 48, height: 36)
+        hint.frame = CGRect(x: 0, y: bounds.midY + 10, width: bounds.width, height: 22)
+        icon.isHidden = bounds.height < 90
         hint.isHidden = icon.isHidden
     }
 

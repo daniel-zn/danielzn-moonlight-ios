@@ -172,8 +172,6 @@ final class ScreenshotTests: XCTestCase {
                 sleep(1)
                 shot(app, "\(tag)-3b-desktop")
                 disconnect.tap()
-                // The menu's item (the bar's button has the same label)
-                app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Disconnect", "bar.disconnect")).firstMatch.tap()
                 XCTAssertTrue(running.waitForExistence(timeout: 10), "\(tag): didn't return to the apps")
                 sleep(1)
 
@@ -277,11 +275,11 @@ final class ScreenshotTests: XCTestCase {
         let failed = app.alerts.firstMatch
         XCTAssertTrue(starting.waitForExistence(timeout: 10) || failed.waitForExistence(timeout: 1), "the session didn't start")
         XCTAssertTrue(app.buttons["bar.disconnect"].exists || failed.exists, "no control bar on the stream screen")
-        // The real stream screen defers system gestures on every edge
+        // The real stream screen doesn't defer system gestures: one swipe opens them, as in any app
         let desktop = app.otherElements["desktop"]
         if desktop.exists, !failed.exists {
             let status = (desktop.value as? String ?? "").components(separatedBy: "\n").first ?? ""
-            XCTAssertTrue(status.contains("edges all"), "stream screen: \(status)")
+            XCTAssertTrue(status.contains("edges none"), "stream screen: \(status)")
         }
         XCTAssertEqual(XCUIDevice.shared.orientation, .portrait)
         shot(app, "\(appearance)-stream-starting")

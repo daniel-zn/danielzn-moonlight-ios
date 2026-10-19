@@ -16,10 +16,25 @@ enum AppPreferences {
         static let gamepadMouse = "ArtemisGamepadMouse"
         /// Keyboard & Mouse › Swap left and right mouse buttons (a connected mouse; read by ControllerSupport).
         static let swapMouseButtons = "ArtemisSwapMouseButtons"
+        /// Controllers › On-screen controller size (0.8 / 0.9 / 1 of the space it gets).
+        static let onScreenGamepadSize = "ArtemisGamepadSize"
+        /// Controllers › On-screen controller opacity over the desktop (0.3–1).
+        static let onScreenGamepadOpacity = "ArtemisGamepadOpacity"
     }
 
     static var quitAppAfterSession: Bool {
         UserDefaults.standard.bool(forKey: Keys.quitAppAfterSession)
+    }
+
+    static var onScreenGamepadSize: Double {
+        let value = UserDefaults.standard.double(forKey: Keys.onScreenGamepadSize)
+        return value > 0 ? min(max(value, 0.6), 1) : PadLayout.defaultSize
+    }
+
+    static var onScreenGamepadOpacity: Double {
+        let value = UserDefaults.standard.object(forKey: Keys.onScreenGamepadOpacity) == nil
+            ? 0.85 : UserDefaults.standard.double(forKey: Keys.onScreenGamepadOpacity)
+        return min(max(value, 0.3), 1)
     }
 
     static var gamepadMouse: Bool {

@@ -3,7 +3,7 @@
 //  Artemis
 //
 //  The connected screen's Liquid Glass controls: the control bar (floating and movable in
-//  landscape, foldable into a button; a row under the desktop when upright) and the key
+//  landscape, foldable into a button; a row at the bottom when upright) and the key
 //  row above the keyboard.
 //
 
@@ -124,12 +124,14 @@ struct ControlBar: View {
         .accessibilityIdentifier("bar.mode")
 
         Button {
-            session.actions.rightClick()
+            session.actions.toggleGamepad()
         } label: {
-            BarIcon(symbol: "contextualmenu.and.cursorarrow", caption: captions ? "Right Click" : nil)
+            BarIcon(symbol: session.gamepadShown ? "gamecontroller.fill" : "gamecontroller",
+                    caption: captions ? "Controller" : nil, active: session.gamepadShown)
         }
-        .accessibilityLabel("Right Click")
-        .accessibilityIdentifier("bar.rightClick")
+        .accessibilityLabel(session.gamepadShown ? "Hide Controller" : "Controller")
+        .accessibilityHint("Shows a game controller on the screen; the PC sees it as an Xbox controller")
+        .accessibilityIdentifier("bar.gamepad")
 
         Menu {
             // The everyday ones first; the rest in submenus, so the menu fits in landscape
@@ -166,8 +168,8 @@ struct ControlBar: View {
             .transition(.scale.combined(with: .opacity))
         }
 
-        Menu {
-            Button("Disconnect", systemImage: "xmark.circle", role: .destructive) { session.actions.disconnect() }
+        Button {
+            session.actions.disconnect()
         } label: {
             BarIcon(symbol: "xmark", caption: captions ? "Disconnect" : nil, tint: .red)
         }

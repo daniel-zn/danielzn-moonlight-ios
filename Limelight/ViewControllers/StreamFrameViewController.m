@@ -44,7 +44,6 @@
     UIActivityIndicatorView *_spinner;
     StreamView *_streamView;
     DesktopViewController *_desktop;
-    BOOL _userIsInteracting;
     BOOL _exiting;
     BOOL _connected;
     CGSize _keyboardSize;
@@ -182,9 +181,11 @@
     
     // The remote desktop controls (touch gestures, zoom, control bar, keyboard) around the
     // stream view; they replace upstream's touch handlers and scroll view.
+    MoonlightDesktopInput* desktopInput = [[MoonlightDesktopInput alloc] init];
+    desktopInput.controllers = _controllerSupport;
     _desktop = [[DesktopViewController alloc] initWithContentView:_streamView
                                                        streamSize:CGSizeMake(self.streamConfig.width, self.streamConfig.height)
-                                                            input:[[MoonlightDesktopInput alloc] init]
+                                                            input:desktopInput
                                                             title:self.streamConfig.appName ?: @"PC"
                                                       localCursor:NO];
     __weak StreamFrameViewController* weakSelf = self;
@@ -669,11 +670,7 @@
 }
 
 - (void)gamepadPresenceChanged {
-#if !TARGET_OS_TV
-    if (@available(iOS 11.0, *)) {
-        [self setNeedsUpdateOfHomeIndicatorAutoHidden];
-    }
-#endif
+    // Artemis: the home indicator stays either way (prefersHomeIndicatorAutoHidden)
 }
 
 - (void)mousePresenceChanged {
@@ -691,69 +688,20 @@
 }
 
 - (void)userInteractionBegan {
-    // Disable hiding home bar when user is interacting.
-    // iOS will force it to be shown anyway, but it will
-    // also discard our edges deferring system gestures unless
-    // we willingly give up home bar hiding preference.
-    _userIsInteracting = YES;
-#if !TARGET_OS_TV
-    if (@available(iOS 11.0, *)) {
-        [self setNeedsUpdateOfHomeIndicatorAutoHidden];
-    }
-#endif
 }
 
 - (void)userInteractionEnded {
-    // Enable home bar hiding again if conditions allow
-    _userIsInteracting = NO;
-#if !TARGET_OS_TV
-    if (@available(iOS 11.0, *)) {
-        [self setNeedsUpdateOfHomeIndicatorAutoHidden];
-    }
-#endif
 }
 
 #if !TARGET_OS_TV
-// Require a confirmation when streaming to activate a system gesture. iOS can't be stopped
-// from opening Notification Centre, Control Centre or going home: deferring makes the first
-// swipe from an edge show only a tab, and a second swipe open it. This controller is presented
-// full screen, so iOS asks it (not the app's hosting controller); its desktop child isn't asked.
-- (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
-    return UIRectEdgeAll;
-}
-
-- (UIViewController *)childViewControllerForScreenEdgesDeferringSystemGestures {
-    return nil;
-}
-
+// Artemis: system gestures work as in any app (one swipe opens Notification or Control Centre,
+// or goes home), and the home indicator stays: no edges deferred, nothing auto-hidden.
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    // Ask again once on screen: a request while presenting can be dropped
-    [self setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
     [self setNeedsStatusBarAppearanceUpdate];
 }
 
-- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
-    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
-    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
-        [self setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
-    }];
-}
-
 - (BOOL)prefersHomeIndicatorAutoHidden {
-    if ([_controllerSupport getConnectedGamepadCount] > 0 &&
-        [_streamView getCurrentOscState] == OnScreenControlsLevelOff &&
-        _userIsInteracting == NO) {
-        // Autohide the home bar when a gamepad is connected
-        // and the on-screen controls are disabled. We can't
-        // do this all the time because any touch on the display
-        // will cause the home indicator to reappear, and our
-        // preferredScreenEdgesDeferringSystemGestures will also
-        // be suppressed (leading to possible errant exits of the
-        // stream).
-        return YES;
-    }
-    
     return NO;
 }
 

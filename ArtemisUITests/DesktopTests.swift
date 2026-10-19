@@ -45,7 +45,11 @@ final class DesktopTests: XCTestCase {
         shot("\(tag)-1-typed")
         XCTAssertEqual(events(desktop, since: count), password, "\(tag) typed")
 
-        // Type Clipboard, from the shortcuts menu (iOS asks before the app reads the clipboard)
+        // Type Clipboard, from the shortcuts menu (iOS asks before the app reads the clipboard).
+        // Upright the bar is at the bottom, under the keyboard: close the keyboard first
+        app.buttons["key.hide"].tap()
+        _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["key.Esc"])],
+                           timeout: 5)
         UIPasteboard.general.string = "Pa55word!"
         count = state(desktop).count
         app.buttons["bar.shortcuts"].tap()
@@ -74,9 +78,9 @@ final class DesktopTests: XCTestCase {
             func frames() -> [String: CGRect] {
                 Dictionary(uniqueKeysWithValues: watched.map { ($0.0, $0.1.frame) })
             }
-            // System gestures deferred on every edge: a first swipe only shows the system's tab
+            // System gestures aren't deferred: one swipe opens Notification / Control Centre or goes home
             let status = (desktop.value as? String ?? "").components(separatedBy: "\n").first ?? ""
-            XCTAssertTrue(status.contains("edges all"), "\(tag): \(status)")
+            XCTAssertTrue(status.contains("edges none"), "\(tag): \(status)")
             let before = frames()
             for (key, frame) in before {
                 XCTAssertFalse(frame.isEmpty, "\(tag): \(key) not on screen")
@@ -210,7 +214,7 @@ final class DesktopTests: XCTestCase {
         XCTAssertTrue(state(desktop).status.contains("trackpad"), "\(tag): doesn't start in trackpad mode (\(state(desktop).status))")
         XCTAssertTrue(app.buttons["bar.keyboard"].exists, "\(tag): no control bar")
         if orientation == .portrait {
-            XCTAssertTrue(app.otherElements["trackpad"].exists || app.buttons["trackpad.left"].exists, "\(tag): no trackpad area upright")
+            XCTAssertTrue(app.otherElements["trackpad"].exists, "\(tag): no trackpad area upright")
             XCTAssertLessThan(desktop.frame.maxY, app.buttons["bar.keyboard"].frame.minY + 1, "\(tag): the bar covers the desktop")
         }
         shot("\(tag)-1-connected")
@@ -364,11 +368,6 @@ final class DesktopTests: XCTestCase {
         new = events(desktop, since: count)
         XCTAssertEqual(new, ["key 0x43 +ctrl", "key 0x1B +ctrl +shift"], "\(tag) shortcuts: \(new)")
 
-        // The bar's right click
-        count = state(desktop).count
-        app.buttons["bar.rightClick"].tap()
-        XCTAssertEqual(events(desktop, since: count), ["down right", "up right"], "\(tag) right click button")
-
         // Direct mode: a tap clicks where it lands
         app.buttons["bar.mode"].tap()
         XCTAssertTrue(state(desktop).status.contains("direct"), "\(tag): \(state(desktop).status)")
@@ -397,14 +396,9 @@ final class DesktopTests: XCTestCase {
             XCTAssertTrue(app.buttons["bar.disconnect"].waitForExistence(timeout: 3), "\(tag): the bar didn't unfold")
         }
 
-        // Disconnect: back to the apps
-        let item = disconnectMenuItem(app)
-        for _ in 0..<3 where !item.exists {
-            app.buttons["bar.disconnect"].tap()
-            _ = item.waitForExistence(timeout: 2)
-        }
-        XCTAssertTrue(item.exists, "\(tag): no Disconnect item")
-        item.tap()
+        // Disconnect: one tap goes straight back to the apps (no menu with a second Disconnect)
+        app.buttons["bar.disconnect"].tap()
+        XCTAssertFalse(disconnectMenuItem(app).waitForExistence(timeout: 1), "\(tag): Disconnect opened a menu")
         XCTAssertTrue(app.buttons["game.Desktop"].waitForExistence(timeout: 10), "\(tag): didn't return to the apps")
         app.terminate()
     }
@@ -414,7 +408,7 @@ final class DesktopTests: XCTestCase {
         let tag = "\(appearance)-\(name)-AX5-desktop"
         let (app, desktop) = connect(size: "UICTContentSizeCategoryAccessibilityXXXL", orientation: orientation)
         let window = app.windows.firstMatch.frame
-        for id in ["bar.keyboard", "bar.mode", "bar.rightClick", "bar.shortcuts", "bar.disconnect"] {
+        for id in ["bar.keyboard", "bar.mode", "bar.gamepad", "bar.shortcuts", "bar.disconnect"] {
             let button = app.buttons[id]
             XCTAssertTrue(button.exists, "\(tag): no \(id)")
             XCTAssertGreaterThanOrEqual(button.frame.minX, window.minX - 1, "\(tag): \(id) off screen")

@@ -20,6 +20,13 @@
 
 @end
 
+/// Artemis: a gamepad state as sent to the PC.
+typedef struct {
+    uint32_t buttons;
+    uint8_t leftTrigger, rightTrigger;
+    int16_t leftStickX, leftStickY, rightStickX, rightStickY;
+} ArtemisPadState;
+
 @interface ControllerSupport : NSObject
 
 /// Artemis: sees each controller's state first and can keep it from the PC (the gamepad mouse).
@@ -53,5 +60,14 @@
 +(int) getConnectedGamepadMask:(StreamConfiguration*)streamConfig;
 
 -(NSUInteger) getConnectedGamepadCount;
+
+/// Artemis: the on-screen gamepad, an Xbox controller of its own (a player number no connected
+/// controller has; player 1 without multiple controllers). Arrives with its first state.
+-(void) connectVirtualGamepad;
+-(void) sendVirtualGamepadButtons:(uint32_t)buttons leftTrigger:(uint8_t)leftTrigger rightTrigger:(uint8_t)rightTrigger
+                       leftStickX:(int16_t)leftStickX leftStickY:(int16_t)leftStickY
+                      rightStickX:(int16_t)rightStickX rightStickY:(int16_t)rightStickY;
+/// At rest, then gone from the PC.
+-(void) disconnectVirtualGamepad;
 
 @end

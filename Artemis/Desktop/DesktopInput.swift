@@ -82,6 +82,31 @@ protocol DesktopInput: AnyObject {
     func keyStroke(_ keyCode: UInt16, modifiers: UInt8, nonNormalized: Bool)
     /// Unicode text the PC types as is.
     func text(_ text: String)
+    /// The on-screen gamepad: an Xbox controller arrives on the PC, takes its states, and goes.
+    func gamepadConnect()
+    func gamepad(_ state: GamepadState)
+    func gamepadDisconnect()
+}
+
+/// A gamepad's state as Moonlight sends it: button flags, triggers 0–255, sticks
+/// −32767…32767 with up positive.
+@objc(ArtemisGamepadState)
+final class GamepadState: NSObject {
+    let buttons: UInt32
+    let leftTrigger: UInt8
+    let rightTrigger: UInt8
+    let leftX: Int16, leftY: Int16
+    let rightX: Int16, rightY: Int16
+
+    init(buttons: UInt32, leftTrigger: UInt8, rightTrigger: UInt8, leftX: Int16, leftY: Int16, rightX: Int16, rightY: Int16) {
+        self.buttons = buttons
+        self.leftTrigger = leftTrigger
+        self.rightTrigger = rightTrigger
+        self.leftX = leftX
+        self.leftY = leftY
+        self.rightX = rightX
+        self.rightY = rightY
+    }
 }
 
 /// The PC, through moonlight-common-c. One serial queue keeps the events in order and
@@ -89,6 +114,8 @@ protocol DesktopInput: AnyObject {
 @objc(MoonlightDesktopInput)
 final class MoonlightDesktopInput: NSObject, DesktopInput {
     private let queue = DispatchQueue(label: "artemis.input", qos: .userInteractive)
+    /// The session's controllers, which the on-screen gamepad joins (StreamFrameViewController).
+    @objc weak var controllers: ControllerSupport?
 
     func movePointer(x: Int, y: Int, width: Int, height: Int) {
         queue.async {
@@ -152,6 +179,21 @@ final class MoonlightDesktopInput: NSObject, DesktopInput {
             }
         }
     }
+
+    // ControllerSupport numbers the gamepad among the connected controllers, under its lock
+    func gamepadConnect() {
+        controllers?.connectVirtualGamepad()
+    }
+
+    func gamepad(_ state: GamepadState) {
+        controllers?.sendVirtualGamepadButtons(state.buttons, leftTrigger: state.leftTrigger, rightTrigger: state.rightTrigger,
+                                               leftStickX: state.leftX, leftStickY: state.leftY,
+                                               rightStickX: state.rightX, rightStickY: state.rightY)
+    }
+
+    func gamepadDisconnect() {
+        controllers?.disconnectVirtualGamepad()
+    }
 }
 
 /// The demo desktop's input: a list of events in a compact text form, shown to the UI
@@ -193,6 +235,19 @@ final class RecordingDesktopInput: NSObject, DesktopInput {
 
     func text(_ text: String) {
         record("text \(text)")
+    }
+
+    func gamepadConnect() {
+        record("gamepad connect")
+    }
+
+    func gamepad(_ state: GamepadState) {
+        record(String(format: "gamepad 0x%04X lt %d rt %d ls %d %d rs %d %d", state.buttons, state.leftTrigger, state.rightTrigger,
+                      state.leftX, state.leftY, state.rightX, state.rightY))
+    }
+
+    func gamepadDisconnect() {
+        record("gamepad disconnect")
     }
 
     /// Something else the demo wants the tests to see (a controller's state going to the PC).

@@ -105,7 +105,6 @@ final class ComputerTests: XCTestCase {
         if !button.exists, app.buttons["bar.unfold"].exists { app.buttons["bar.unfold"].tap() }
         XCTAssertTrue(button.waitForExistence(timeout: 5), "no Disconnect")
         button.tap()
-        app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Disconnect", "bar.disconnect")).firstMatch.tap()
     }
 
     /// Tapping an offline PC wakes it, shows "Waking up…", and opens its apps once it's up.

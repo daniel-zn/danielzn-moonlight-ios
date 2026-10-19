@@ -45,13 +45,17 @@ points of an edge. The control bar shows a reset button (`1×`) while zoomed; a 
 
 ## The control bar
 
-A Liquid Glass capsule over the desktop in landscape; in portrait it sits under the desktop.
+A Liquid Glass capsule over the desktop in landscape; in portrait a row at the bottom of the screen, under the
+trackpad (above the home indicator).
 
-- Keyboard, pointer mode (trackpad / direct), right click (at the pointer), shortcuts, zoom reset (while zoomed),
-  disconnect (a menu with Disconnect, so it isn't hit by accident). Room is left for a microphone button (mic
-  passthrough is a later phase).
+- Keyboard, pointer mode (trackpad / direct), controller (shows or hides the on-screen controller), shortcuts, zoom
+  reset (while zoomed), disconnect (one tap ends the session, no confirming menu). There's no right-click
+  button: a two-finger tap or a press and hold right-clicks. Room is left for a microphone button (mic passthrough
+  is a later phase).
 - In landscape it can be dragged anywhere inside the safe area (it remembers where) and folded into a small round
-  button; Settings › Touch & Pointer › Show control bar decides whether a session starts unfolded.
+  button; Settings › Touch & Pointer › Show control bar decides whether a session starts unfolded. While the
+  on-screen controller is up it moves to the top centre, between the controller's columns (dragging it there is
+  remembered separately).
 
 ## Keyboard
 
@@ -79,11 +83,16 @@ how Apollo types.
 
 - **Landscape:** the desktop fills the screen (letterboxed to its aspect ratio, inside the safe area horizontally),
   with the floating control bar.
-- **Portrait:** the desktop fits the top of the screen. Below it: the control bar, then a trackpad area (always
-  trackpad, whatever the mode) with large left and right buttons.
+- **Portrait:** the desktop fits the top of the screen. Below it a trackpad area (always trackpad, whatever the mode;
+  no click buttons: tap to click, two-finger tap or press and hold to right-click), then the control bar at the
+  bottom.
 - The keyboard and its key row lie on top: the desktop, the trackpad area and the control bar keep their size and
   place when it opens or closes, even where it covers them (`DesktopTests/testKeyboardOverlays`).
 - Haptics: light on clicks, medium when a press and hold starts, selection ticks on modifier keys.
+- **System gestures** work as in any app: one swipe from the top opens Notification or Control Centre, one swipe up
+  from the bottom goes home. The session doesn't defer the screen edges (`preferredScreenEdgesDeferringSystemGestures`
+  isn't overridden; the desktop's state line reads `edges none`) and doesn't hide the home indicator. The status bar
+  stays hidden.
 
 ## Mapping to Moonlight's input calls
 
@@ -109,10 +118,45 @@ produce (the desktop's accessibility value). `ArtemisUITests/DesktopTests.swift`
 the events, upright and in landscape; `testTypedPassword` types "Pa55word!" on the iOS keyboard and with Type
 Clipboard and checks both are key events (Shift+P, A, 5, 5, W, O, R, D, Shift+1).
 
+## On-screen controller
+
+The control bar's controller button (`gamecontroller`) shows an Xbox-style controller of Liquid Glass buttons; the
+PC sees an Xbox controller (`Artemis/Desktop/OnScreenGamepad.swift`, adapted from RetroPlay's pad).
+
+- **Portrait:** it takes the trackpad's place, between the desktop and the control bar. **Landscape:** it lies over
+  the desktop: a column at each side (LT LB, left stick, D-pad further in; RB RT, A B X Y, right stick further in),
+  View / Xbox / Menu at the top centre, see-through glass.
+- Controls: left and right sticks, D-pad (eight ways), A B X Y, LB RB, LT RT (fully pulled while held), View, Menu
+  and the Xbox (Guide) button. No stick clicks (L3 / R3).
+- Touch: several fingers at once (a stick, a trigger and a face button); a thumb slides between face buttons and
+  holds both in the gap; a slightly missed tap goes to the nearest control (12 points); a stick measures from where
+  the thumb lands (full tilt at 38 % of its width, 10 % dead zone taken out smoothly), and keeps steering off its
+  edge; a D-pad touch keeps steering too. Light haptic on each new press. VoiceOver: each button presses, the D-pad
+  and sticks have direction actions.
+- Touches on the controller don't move the pointer; in landscape, touches between its controls go to the desktop as
+  usual. The keyboard lies over it (nothing moves).
+- Each session starts with it hidden (not remembered: a remote desktop session usually wants the trackpad first);
+  it stays up across rotation.
+- To the PC: `connectVirtualGamepad` / `sendVirtualGamepadButtons…` / `disconnectVirtualGamepad` in
+  `ControllerSupport`. With Multiple controllers on, it takes the first player number (0–3) no connected controller
+  has, controllers connecting later skip it, and the active-gamepad mask includes it (Apollo takes up to 16; with
+  four controllers connected it's number 4); with it off it's player 1 like every controller, and its state and the
+  connected controllers' are merged (buttons together, the larger trigger and stick), so neither releases what the
+  other holds. Arrival (`LiSendControllerArrivalEvent`, `LI_CTYPE_XBOX`, its buttons) goes with its first
+  state, sent as soon as it shows (`LiSendMultiControllerEvent`, at rest). Hiding it, disconnecting or leaving the
+  session sends it at rest, then without its bit in the mask, so the PC removes it. Fingers lifting with the app
+  going away release everything.
+- Settings › Controllers › On-Screen Controller: Size (Small / Medium / Large: 80 / 90 / 100 % of the space it
+  gets, Medium by default) and Opacity over the desktop (landscape, 30–100 %, 85 % by default).
+- Tests: `OnScreenGamepadTests` (the demo desktop records `gamepad connect`, `gamepad <buttons> lt rt ls x y rs x y`,
+  `gamepad disconnect`): A, RT, Guide, Menu, D-pad, both sticks, A + LT + a stick at once, shown and hidden in
+  portrait and landscape, large text.
+
 ## Game controllers
 
 A controller connected to the iPhone (Xbox, PlayStation, MFi) goes to the PC as a gamepad (upstream's
-`ControllerSupport`; the on-screen gamepad is never shown). Start, Select, LB and RB together disconnect.
+`ControllerSupport`; upstream's on-screen controls are never shown, Artemis has its own above). Start, Select, LB
+and RB together disconnect.
 
 **As the mouse.** Hold Start (Menu) for 0.75 s to switch the controller to the mouse; a notice says "Controller
 mouse on". Hold it again to switch back. While it's the mouse, nothing goes to the PC as a gamepad.
