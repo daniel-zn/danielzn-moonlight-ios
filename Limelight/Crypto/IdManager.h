@@ -9,5 +9,6 @@
 @interface IdManager : NSObject
 
 + (NSString*) getUniqueId;
++ (NSString*) generateUniqueId;
 
 @end

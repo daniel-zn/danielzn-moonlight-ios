@@ -313,6 +313,32 @@ final class ComputerTests: XCTestCase {
         app.terminate()
     }
 
+    /// A fresh install: there are no saved settings yet when the app moves the default to Native
+    /// (before it has made its ID). The move sticks, and it's still Native after a relaunch.
+    func testNativeResolutionFreshInstall() {
+        let app = launch(["-ArtemisTestSettingsState", "fresh"])
+        assertNative(app, "fresh install")
+        app.terminate()
+        assertNative(launch(), "fresh install, relaunched")
+    }
+
+    /// A phone where the move was marked done but didn't stick (builds up to 1273 on a fresh
+    /// install: the settings stayed at 720p): it moves to Native now, and stays there.
+    func testNativeResolutionAfterFailedSwitch() {
+        let app = launch(["-ArtemisTestSettingsState", "failedSwitch"])
+        assertNative(app, "after the failed switch")
+        app.terminate()
+        assertNative(launch(), "after the failed switch, relaunched")
+    }
+
+    private func assertNative(_ app: XCUIApplication, _ tag: String) {
+        app.buttons["computers.settings"].tap()
+        let summary = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Sessions use Native at")).firstMatch
+        XCTAssertTrue(summary.waitForExistence(timeout: 5),
+                      "\(tag): not Native: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Sessions use'")).firstMatch.label)")
+        app.terminate()
+    }
+
     /// Sessions default to the iPhone's own resolution: settings still at upstream's 1280 × 720
     /// move to Native once.
     func testNativeResolutionDefault() {

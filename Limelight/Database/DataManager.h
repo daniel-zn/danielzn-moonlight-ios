@@ -39,6 +39,8 @@
 - (TemporarySettings*) getSettings;
 
 - (void) updateUniqueId:(NSString*)uniqueId;
+/// Artemis's UI tests (demo only): forget the saved settings, as on a fresh install.
+- (void) deleteSettings;
 - (NSString*) getUniqueId;
 
 @end

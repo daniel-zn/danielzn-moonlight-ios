@@ -54,7 +54,7 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 
 | Mac section › option | iPhone | |
 |---|---|---|
-| Video › Resolution (Native, Native Excluding Notch, 720p…4K, Custom) | Same list for this iPhone (360p–4K, Native, Native Excluding Notch, Custom) | ✅ |
+| Video › Resolution (Native, Native Excluding Notch, 720p…4K, Custom) | Same list for this iPhone (360p–4K, Native, Native Excluding Notch, Custom); Native by default (settings still at upstream's 720p move to it once, marked done only once it's stored) | ✅ |
 | Video › FPS (30, 60, display rates, Custom) | 30, 60, 120 on ProMotion iPhones | ✅ |
 | Video › Bitrate slider, default per resolution | Same notches and defaults | ✅ |
 | Video › Display mode (fullscreen / windowed) | ➖ always full screen or upright with the trackpad | ➖ |

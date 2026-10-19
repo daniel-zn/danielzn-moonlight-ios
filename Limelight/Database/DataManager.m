@@ -9,6 +9,7 @@
 #import "DataManager.h"
 #import "TemporaryApp.h"
 #import "TemporarySettings.h"
+#import "IdManager.h"
 
 @implementation DataManager {
     NSManagedObjectContext *_managedObjectContext;
@@ -71,6 +72,12 @@
     
     [_managedObjectContext performBlockAndWait:^{
         Settings* settingsToSave = [self retrieveSettings];
+        // A Settings record needs its ID to be saved (uniqueId isn't optional): settings saved
+        // before IdManager made one (Artemis moves the default resolution at start) failed
+        // validation and were silently lost
+        if (settingsToSave.uniqueId == nil) {
+            settingsToSave.uniqueId = [IdManager generateUniqueId];
+        }
         settingsToSave.framerate = [NSNumber numberWithInteger:framerate];
         settingsToSave.bitrate = [NSNumber numberWithInteger:bitrate];
         settingsToSave.height = [NSNumber numberWithInteger:height];
@@ -133,6 +140,15 @@
         
         parent.appList = applist;
         
+        [self saveData];
+    }];
+}
+
+- (void) deleteSettings {
+    [_managedObjectContext performBlockAndWait:^{
+        for (NSManagedObject* settings in [self fetchRecords:@"Settings"]) {
+            [self->_managedObjectContext deleteObject:settings];
+        }
         [self saveData];
     }];
 }

@@ -78,8 +78,23 @@ struct StreamSettings: Equatable {
     /// landscape) at its display's highest frame rate, so the host's virtual display matches the
     /// phone. Settings still at upstream's default (1280 × 720) move to it once; a resolution
     /// chosen later stays. Needs the window scene, so the store calls it at start.
+    /// Marked done only once the move is stored: up to build 1273 a fresh install's move was lost
+    /// (its settings couldn't be saved before the app had made its ID) and still marked done,
+    /// so those phones stayed at 720p; the new mark lets them move now.
     static func adoptNativeDefaultIfUnchanged() {
         let defaults = UserDefaults.standard
+        // Demo only: a fresh install (no saved settings yet), or a phone where the move was
+        // marked done but didn't stick (the settings at 720p), to test the move from there
+        if DemoData.isEnabled, let state = defaults.string(forKey: "ArtemisTestSettingsState") {
+            DataManager().deleteSettings()
+            defaults.removeObject(forKey: "ArtemisNativeDefaultApplied")
+            defaults.removeObject(forKey: Keys.nativeDefaultApplied)
+            if state == "failedSwitch" {
+                // What the app did next: made its ID, which saved upstream's defaults
+                _ = IdManager.getUniqueId()
+                defaults.set(true, forKey: "ArtemisNativeDefaultApplied")
+            }
+        }
         // Demo only: start from upstream's default, to test the move
         if DemoData.isEnabled && defaults.bool(forKey: "ArtemisTestOldDefaultResolution") {
             var old = load()
@@ -90,10 +105,12 @@ struct StreamSettings: Equatable {
             defaults.removeObject(forKey: Keys.nativeDefaultApplied)
         }
         guard !defaults.bool(forKey: Keys.nativeDefaultApplied) else { return }
-        defaults.set(true, forKey: Keys.nativeDefaultApplied)
         var settings = load()
         guard settings.width == 1280 && settings.height == 720,
-              let native = presetResolutions.first(where: { $0.name == "Native" }) else { return }
+              let native = presetResolutions.first(where: { $0.name == "Native" }) else {
+            defaults.set(true, forKey: Keys.nativeDefaultApplied)
+            return
+        }
         settings.width = native.width
         settings.height = native.height
         if settings.framerate == 60 && supports120FPS {
@@ -101,11 +118,18 @@ struct StreamSettings: Equatable {
         }
         settings.resetBitrate()
         settings.save()
+        let stored = load()
+        guard stored.width == native.width && stored.height == native.height else {
+            logInfo("Default resolution: couldn't save \(native.width) × \(native.height); trying again next launch")
+            return
+        }
+        defaults.set(true, forKey: Keys.nativeDefaultApplied)
         logInfo("Default resolution: \(native.width) × \(native.height) at \(settings.framerate) FPS")
     }
 
     private enum Keys {
-        static let nativeDefaultApplied = "ArtemisNativeDefaultApplied"
+        /// "ArtemisNativeDefaultApplied" until 1273, also set when the move was lost.
+        static let nativeDefaultApplied = "ArtemisNativeDefaultApplied2"
     }
 
     // MARK: Bitrate
