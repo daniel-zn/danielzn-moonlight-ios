@@ -53,9 +53,12 @@ trackpad (above the home indicator).
   button: a two-finger tap or a press and hold right-clicks. Room is left for a microphone button (mic passthrough
   is a later phase).
 - In landscape it can be dragged anywhere inside the safe area (it remembers where) and folded into a small round
-  button; Settings › Touch & Pointer › Show control bar decides whether a session starts unfolded. While the
-  on-screen controller is up it moves to the top centre, between the controller's columns (dragging it there is
-  remembered separately).
+  button; Settings › Touch & Pointer › Show control bar decides whether a session starts unfolded. Folded and
+  left untouched for 5 seconds, the button fades from Liquid Glass to a flat, faint disc so it hides over the
+  desktop (its accessibility value says "Faded"); a touch brings the glass back at once and the 5 seconds start
+  again (`testFoldedBarFades`). While the on-screen controller is up the bar moves to the top centre, between the
+  controller's shoulders (under them where it doesn't fit there, as on an iPhone SE); dragging it there is
+  remembered separately.
 
 ## Keyboard
 
@@ -123,16 +126,25 @@ Clipboard and checks both are key events (Shift+P, A, 5, 5, W, O, R, D, Shift+1)
 The control bar's controller button (`gamecontroller`) shows an Xbox-style controller of Liquid Glass buttons; the
 PC sees an Xbox controller (`Artemis/Desktop/OnScreenGamepad.swift`, adapted from RetroPlay's pad).
 
-- **Portrait:** it takes the trackpad's place, between the desktop and the control bar. **Landscape:** it lies over
-  the desktop: a column at each side (LT LB, left stick, D-pad further in; RB RT, A B X Y, right stick further in),
-  View / Xbox / Menu at the top centre, see-through glass.
-- Controls: left and right sticks, D-pad (eight ways), A B X Y, LB RB, LT RT (fully pulled while held), View, Menu
-  and the Xbox (Guide) button. No stick clicks (L3 / R3).
+- One layout for both orientations (`PadLayout.controls(in:scale:)`): a column at each side of its area, the left
+  stick over the D-pad and A B X Y over the right stick (each pair on one centre line); L3 LT LB at the top left
+  corner and RB RT R3 at the top right; Select / Xbox / Start in a row at the bottom centre. **Portrait:** the area
+  is the trackpad's place, between the desktop and the control bar, and the row sits under the columns, just above
+  the bar. **Landscape:** it lies over the desktop, see-through, inside the safe area (8 points in from the
+  notch's inset, at least 16 from the edge, clear of the home indicator), with the row between the columns.
+- Controls: left and right sticks, D-pad (eight ways), A B X Y, LB RB, LT RT (fully pulled while held), Select (the
+  Xbox controller's Back / View), Start (its Start / Menu), the Xbox (Guide) button, and L3 / R3 (the stick clicks).
+- The sticks and the D-pad are RetroPlay's PSP pad's (look, sizes and touch handling; `PadHitTesting.swift` is its
+  geometry): a stick of 122 points at full size, its knob 46 % of it and moving 30 % of it; the stick's centre is
+  zero and the knob goes where the thumb is (it doesn't float to where the thumb lands), full tilt at 22.5 % of its
+  size from the centre (three quarters of the knob's travel), an 8 % dead zone taken out smoothly, full tilt held
+  past the rim, back to the centre when the thumb lifts. The D-pad (144 points): eight ways, a dead middle of 12 %
+  of its size, diagonals where the weaker axis is at least 42 % of the stronger, a thumb slides between directions.
+  Upright on the plain background they're dark tinted glass (RetroPlay's PSP colours); over the desktop, clear glass.
 - Touch: several fingers at once (a stick, a trigger and a face button); a thumb slides between face buttons and
-  holds both in the gap; a slightly missed tap goes to the nearest control (12 points); a stick measures from where
-  the thumb lands (full tilt at 38 % of its width, 10 % dead zone taken out smoothly), and keeps steering off its
-  edge; a D-pad touch keeps steering too. Light haptic on each new press. VoiceOver: each button presses, the D-pad
-  and sticks have direction actions.
+  holds both in the gap; a slightly missed tap goes to the nearest control (14 points); a stick or D-pad touch keeps
+  steering off its edge. Light haptic on each new press of a button or D-pad direction (the sticks don't tick).
+  VoiceOver: each button presses, the D-pad and sticks have direction actions.
 - Touches on the controller don't move the pointer; in landscape, touches between its controls go to the desktop as
   usual. The keyboard lies over it (nothing moves).
 - Each session starts with it hidden (not remembered: a remote desktop session usually wants the trackpad first);
@@ -146,11 +158,14 @@ PC sees an Xbox controller (`Artemis/Desktop/OnScreenGamepad.swift`, adapted fro
   state, sent as soon as it shows (`LiSendMultiControllerEvent`, at rest). Hiding it, disconnecting or leaving the
   session sends it at rest, then without its bit in the mask, so the PC removes it. Fingers lifting with the app
   going away release everything.
-- Settings › Controllers › On-Screen Controller: Size (Small / Medium / Large: 80 / 90 / 100 % of the space it
-  gets, Medium by default) and Opacity over the desktop (landscape, 30–100 %, 85 % by default).
+- Settings › Controllers › On-Screen Controller: Size (Small / Medium / Large: 80 / 90 / 100 % of the full size,
+  smaller still where the space is too small: on an iPhone SE upright Large is about 83 %) and Opacity (30–100 %,
+  85 % by default), both orientations.
 - Tests: `OnScreenGamepadTests` (the demo desktop records `gamepad connect`, `gamepad <buttons> lt rt ls x y rs x y`,
-  `gamepad disconnect`): A, RT, Guide, Menu, D-pad, both sticks, A + LT + a stick at once, shown and hidden in
-  portrait and landscape, large text.
+  `gamepad disconnect`): A, RT, Xbox, Start, Select, L3, R3, D-pad, both sticks, A + LT + a stick at once, shown and
+  hidden in portrait and landscape, large text; `testGamepadLayout` checks the layout upright and in landscape at
+  Small and Large (columns on one centre line within 1 point and at the sides, the shoulders above them with the
+  stick clicks outside, the row centred at the bottom, nothing overlapping or off screen).
 
 ## Game controllers
 

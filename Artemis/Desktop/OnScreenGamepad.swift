@@ -3,13 +3,15 @@
 //  Artemis
 //
 //  The on-screen controller (the control bar's controller button): an Xbox-style gamepad of
-//  Liquid Glass buttons that the PC sees as an Xbox controller. Upright it takes the trackpad's
-//  place; in landscape it lies over the desktop, see-through, at the screen's sides.
-//  Adapted from RetroPlay's pad (Controls/PadControls.swift, PadTouchSurface.swift): SwiftUI
-//  draws the controls, one UIKit view takes every touch on them, so several fingers work at
-//  once (a stick, a trigger and a face button), a thumb slides between face buttons, a stick
-//  measures from where the thumb lands, and a new press ticks a haptic. Touches away from the
-//  controls fall through to the desktop.
+//  Liquid Glass buttons that the PC sees as an Xbox controller. One layout for both
+//  orientations (upright in the trackpad's place, in landscape over the desktop, see-through):
+//  a column at each side (the left stick over the D-pad, A B X Y over the right stick), the
+//  shoulders above them with the stick clicks outside, Select / Xbox / Start at the bottom centre.
+//  Adapted from RetroPlay's pad (Controls/PadControls.swift, PadTouchSurface.swift; the sticks and
+//  the D-pad are its PSP pad's): SwiftUI draws the controls, one UIKit view takes every touch on
+//  them, so several fingers work at once (a stick, a trigger and a face button), a thumb slides
+//  between face buttons, and a new press ticks a haptic. Touches away from the controls fall
+//  through to the desktop.
 //
 
 import SwiftUI
@@ -29,7 +31,10 @@ struct PadControl: Identifiable, Equatable {
     enum Look: Equatable {
         case face(Color)
         case shoulder
+        /// Select and Start.
         case pill
+        /// L3 and R3: small and round.
+        case click
         case guide
         case dpad
         case stick
@@ -44,7 +49,7 @@ struct PadControl: Identifiable, Equatable {
 
     var isRound: Bool {
         switch look {
-        case .face, .guide, .stick: true
+        case .face, .click, .guide, .stick: true
         default: false
         }
     }
@@ -54,7 +59,9 @@ enum PadBits {
     static let a = UInt32(A_FLAG), b = UInt32(B_FLAG), x = UInt32(X_FLAG), y = UInt32(Y_FLAG)
     static let up = UInt32(UP_FLAG), down = UInt32(DOWN_FLAG), left = UInt32(LEFT_FLAG), right = UInt32(RIGHT_FLAG)
     static let lb = UInt32(LB_FLAG), rb = UInt32(RB_FLAG)
-    static let view = UInt32(BACK_FLAG), menu = UInt32(PLAY_FLAG), guide = UInt32(SPECIAL_FLAG)
+    /// Select is the Xbox controller's Back (View) button, Start its Start (Menu) button.
+    static let select = UInt32(BACK_FLAG), start = UInt32(PLAY_FLAG), guide = UInt32(SPECIAL_FLAG)
+    static let leftClick = UInt32(LS_CLK_FLAG), rightClick = UInt32(RS_CLK_FLAG)
     /// The triggers ride along as bits of their own (Moonlight's flags don't use these) and go
     /// out as fully pulled.
     static let leftTrigger: UInt32 = 1 << 30
@@ -62,89 +69,114 @@ enum PadBits {
     static let triggers = leftTrigger | rightTrigger
 }
 
+/// RetroPlay's PSP colours: the sticks' and the D-pad's tints on the plain background.
+enum PadPalette {
+    static let dpad = Color(red: 0.18, green: 0.18, blue: 0.20)
+    static let gate = Color(red: 0.16, green: 0.16, blue: 0.17)
+    static let nub = Color(red: 0.32, green: 0.32, blue: 0.34)
+}
+
 enum PadLayout {
-    /// Settings › Controllers › On-screen controller size: a share of the space it gets
-    /// (Large fills it).
+    /// Settings › Controllers › On-screen controller size: a share of the full size (Large),
+    /// which shrinks further where the space is too small for it.
     static let sizes: [(name: String, scale: Double)] = [("Small", 0.8), ("Medium", 0.9), ("Large", 1)]
     static let defaultSize = 0.9
 
     private static let xbox = (a: Color(red: 0.36, green: 0.72, blue: 0.26), b: Color(red: 0.86, green: 0.24, blue: 0.22),
                                x: Color(red: 0.20, green: 0.50, blue: 0.95), y: Color(red: 0.95, green: 0.74, blue: 0.10))
 
-    /// The controls for a pad of this size: upright, a block the shape of the space it gets
-    /// (the trackpad's); in landscape, a column at each side of `safe` and the small buttons
-    /// at the top in the middle.
-    static func controls(size: CGSize, safe: CGRect, landscape: Bool, scale: Double) -> [PadControl] {
-        landscape ? sides(safe: safe, scale: scale) : block(size: size, scale: scale)
-    }
+    // The full size, in points: RetroPlay's PSP pad at Large (its stick and D-pad, its diamond's spacing)
+    static let stick: CGFloat = 122
+    static let dpad: CGFloat = 144
+    static let faceDiameter: CGFloat = 54
+    static let faceReach = faceDiameter * 0.9
+    private static let faceSpan = faceReach * 2 + faceDiameter
+    private static let column = max(stick, dpad, faceSpan)
+    /// The columns' rows: the left stick beside A B X Y, the D-pad beside the right stick.
+    private static let topRow = max(stick, faceSpan), bottomRow = max(dpad, stick), rowGap: CGFloat = 10
+    private static let columnHeight = topRow + rowGap + bottomRow
+    private static let shoulder = CGSize(width: 64, height: 40), click: CGFloat = 40, shoulderGap: CGFloat = 6
+    /// L3, LT, LB (and mirrored RB, RT, R3).
+    private static let shoulderGroup = click + shoulder.width * 2 + shoulderGap * 2
+    private static let pill = CGSize(width: 58, height: 30), guide: CGFloat = 44, middleGap: CGFloat = 14
+    private static let middleRow = pill.width * 2 + guide + middleGap * 2
+    /// Between the shoulders and the columns, the columns and Select / Xbox / Start below them.
+    private static let gap: CGFloat = 12
 
-    /// Upright: shoulders across the top, View / Guide / Menu under them, then the left stick
-    /// and A B X Y, then the D-pad and the right stick (an Xbox controller's offset sticks).
-    private static func block(size: CGSize, scale: Double) -> [PadControl] {
-        let design = CGSize(width: 380, height: 420)
-        let unit = max(0.4, min(size.width / design.width, size.height / design.height) * min(scale, 1))
-        let origin = CGPoint(x: (size.width - design.width * unit) / 2, y: (size.height - design.height * unit) / 2)
-        func rect(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
-            CGRect(x: origin.x + x * unit, y: origin.y + y * unit, width: width * unit, height: height * unit)
+    /// The controls in `area` (upright, the trackpad's place; in landscape, the safe area). The
+    /// columns go at its sides and the shoulders at its top corners; Select / Xbox / Start at its
+    /// bottom centre, between the columns when it's wide, under them when it's tall.
+    static func controls(in area: CGRect, scale: Double) -> [PadControl] {
+        let unit = unit(in: area, scale: scale)
+        let beside = isWide(area)
+        func size(_ value: CGFloat) -> CGFloat { value * unit }
+
+        // The shoulders along the top: L3 LT LB at the left corner, RB RT R3 mirrored
+        let top = area.minY
+        func leftShoulder(_ x: CGFloat, _ width: CGFloat) -> CGRect {
+            CGRect(x: area.minX + size(x), y: top, width: size(width), height: size(shoulder.height))
         }
+        func rightShoulder(_ x: CGFloat, _ width: CGFloat) -> CGRect {
+            CGRect(x: area.maxX - size(x + width), y: top, width: size(width), height: size(shoulder.height))
+        }
+        let lt = click + shoulderGap, lb = lt + shoulder.width + shoulderGap
+
+        // Select / Xbox / Start at the bottom centre
+        let middleY = area.maxY - size(guide) / 2
+        let guideFrame = CGRect(x: area.midX - size(guide) / 2, y: middleY - size(guide) / 2, width: size(guide), height: size(guide))
+        let pillY = middleY - size(pill.height) / 2
+        let select = CGRect(x: guideFrame.minX - size(middleGap + pill.width), y: pillY, width: size(pill.width), height: size(pill.height))
+        let start = CGRect(x: guideFrame.maxX + size(middleGap), y: pillY, width: size(pill.width), height: size(pill.height))
+
+        // The columns, centred in what's left between the shoulders and the bottom (or the row)
+        let columnsTop = top + size(shoulder.height + gap)
+        let columnsBottom = beside ? area.maxY : guideFrame.minY - size(gap)
+        let y0 = columnsTop + max(0, (columnsBottom - columnsTop - size(columnHeight)) / 2)
+        let upper = y0 + size(topRow) / 2, lower = y0 + size(topRow + rowGap) + size(bottomRow) / 2
+        let leftX = area.minX + size(column) / 2, rightX = area.maxX - size(column) / 2
         func round(_ x: CGFloat, _ y: CGFloat, _ diameter: CGFloat) -> CGRect {
-            rect(x - diameter / 2, y - diameter / 2, diameter, diameter)
+            CGRect(x: x - size(diameter) / 2, y: y - size(diameter) / 2, width: size(diameter), height: size(diameter))
         }
-        return shoulders(lt: rect(4, 4, 80, 40), lb: rect(92, 4, 80, 40), rb: rect(208, 4, 80, 40), rt: rect(296, 4, 80, 40))
-            + middle(view: rect(108, 64, 52, 32), guide: round(190, 80, 44), menu: rect(220, 64, 52, 32))
-            + [stick(left: true, round(80, 175, 130))]
-            + face(center: CGPoint(x: origin.x + 295 * unit, y: origin.y + 175 * unit), diameter: 54 * unit, reach: 50 * unit)
-            + [dpad(round(110, 335, 130)), stick(left: false, round(270, 335, 130))]
+
+        return [stickClick(left: true, round(area.minX + size(click) / 2, top + size(shoulder.height) / 2, click)),
+                PadControl(id: "LT", title: "LT", accessibility: "Left Trigger", kind: .button(PadBits.leftTrigger), look: .shoulder,
+                           frame: leftShoulder(lt, shoulder.width)),
+                PadControl(id: "LB", title: "LB", accessibility: "Left Bumper", kind: .button(PadBits.lb), look: .shoulder,
+                           frame: leftShoulder(lb, shoulder.width)),
+                PadControl(id: "RB", title: "RB", accessibility: "Right Bumper", kind: .button(PadBits.rb), look: .shoulder,
+                           frame: rightShoulder(lb, shoulder.width)),
+                PadControl(id: "RT", title: "RT", accessibility: "Right Trigger", kind: .button(PadBits.rightTrigger), look: .shoulder,
+                           frame: rightShoulder(lt, shoulder.width)),
+                stickClick(left: false, round(area.maxX - size(click) / 2, top + size(shoulder.height) / 2, click)),
+                PadControl(id: "Select", title: "Select", accessibility: "Select", kind: .button(PadBits.select), look: .pill, frame: select),
+                PadControl(id: "Guide", title: "", accessibility: "Xbox Button", kind: .button(PadBits.guide), look: .guide, frame: guideFrame),
+                PadControl(id: "Start", title: "Start", accessibility: "Start", kind: .button(PadBits.start), look: .pill, frame: start),
+                stick(left: true, round(leftX, upper, stick))]
+            + face(center: CGPoint(x: rightX, y: upper), diameter: size(faceDiameter), reach: size(faceReach))
+            + [PadControl(id: "dpad", title: "", accessibility: "D-pad", kind: .dpad, look: .dpad, frame: round(leftX, lower, dpad)),
+               stick(left: false, round(rightX, lower, stick))]
     }
 
-    /// Landscape: the left column (LT LB, the left stick, the D-pad further in), the right one
-    /// mirrored (RB RT, A B X Y, the right stick further in), View / Guide / Menu top centre.
-    private static func sides(safe: CGRect, scale: Double) -> [PadControl] {
-        let unit = sidesUnit(safe: safe, scale: scale)
-        func left(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
-            CGRect(x: safe.minX + x * unit, y: safe.minY + y * unit, width: width * unit, height: height * unit)
-        }
-        // The right column is the left one mirrored
-        func right(_ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
-            CGRect(x: safe.maxX - (x + width) * unit, y: safe.minY + y * unit, width: width * unit, height: height * unit)
-        }
-        func round(_ place: (CGFloat, CGFloat, CGFloat, CGFloat) -> CGRect, _ x: CGFloat, _ y: CGFloat, _ diameter: CGFloat) -> CGRect {
-            place(x - diameter / 2, y - diameter / 2, diameter, diameter)
-        }
-        let guide = CGRect(x: safe.midX - 22 * unit, y: safe.minY, width: 44 * unit, height: 44 * unit)
-        let faceCenter = right(80, 125, 0, 0).origin
-        return shoulders(lt: left(0, 0, 80, 40), lb: left(88, 0, 80, 40), rb: right(88, 0, 80, 40), rt: right(0, 0, 80, 40))
-            + middle(view: CGRect(x: guide.minX - 60 * unit, y: guide.midY - 16 * unit, width: 52 * unit, height: 32 * unit),
-                     guide: guide,
-                     menu: CGRect(x: guide.maxX + 8 * unit, y: guide.midY - 16 * unit, width: 52 * unit, height: 32 * unit))
-            + [stick(left: true, round(left, 75, 125, 130))]
-            + face(center: faceCenter, diameter: 54 * unit, reach: 50 * unit)
-            + [dpad(round(left, 160, 255, 120)), stick(left: false, round(right, 160, 255, 120))]
+    /// Where the control bar goes while the pad lies over the desktop (landscape), as a fraction
+    /// of the screen: top centre between the shoulders, or under them if it doesn't fit there.
+    static func barCenter(area: CGRect, bounds: CGSize, barSize: CGSize, scale: Double) -> CGPoint {
+        let unit = unit(in: area, scale: scale)
+        let between = area.width - 2 * shoulderGroup * unit
+        let y = between >= barSize.width + 16
+            ? area.minY + shoulder.height * unit / 2
+            : area.minY + (shoulder.height + gap) * unit + barSize.height / 2
+        return CGPoint(x: area.midX / bounds.width, y: y / bounds.height)
     }
 
-    /// Where the control bar goes while the pad lies over the desktop: top centre, under
-    /// View / Guide / Menu (as a fraction of the screen).
-    static func barCenter(safe: CGRect, bounds: CGSize, barHeight: CGFloat, scale: Double) -> CGPoint {
-        let y = safe.minY + 44 * sidesUnit(safe: safe, scale: scale) + 10 + barHeight / 2
-        return CGPoint(x: safe.midX / bounds.width, y: y / bounds.height)
+    private static func isWide(_ area: CGRect) -> Bool {
+        area.width > area.height
     }
 
-    /// Landscape's size: two columns of 230 × 320 and 170 between them, at most 1.3×.
-    private static func sidesUnit(safe: CGRect, scale: Double) -> CGFloat {
-        max(0.4, min(safe.height / 320, safe.width / (230 * 2 + 170), 1.3) * min(scale, 1))
-    }
-
-    private static func shoulders(lt: CGRect, lb: CGRect, rb: CGRect, rt: CGRect) -> [PadControl] {
-        [PadControl(id: "LT", title: "LT", accessibility: "Left Trigger", kind: .button(PadBits.leftTrigger), look: .shoulder, frame: lt),
-         PadControl(id: "LB", title: "LB", accessibility: "Left Bumper", kind: .button(PadBits.lb), look: .shoulder, frame: lb),
-         PadControl(id: "RB", title: "RB", accessibility: "Right Bumper", kind: .button(PadBits.rb), look: .shoulder, frame: rb),
-         PadControl(id: "RT", title: "RT", accessibility: "Right Trigger", kind: .button(PadBits.rightTrigger), look: .shoulder, frame: rt)]
-    }
-
-    private static func middle(view: CGRect, guide: CGRect, menu: CGRect) -> [PadControl] {
-        [PadControl(id: "View", title: "View", accessibility: "View", kind: .button(PadBits.view), look: .pill, frame: view),
-         PadControl(id: "Guide", title: "", accessibility: "Xbox Button", kind: .button(PadBits.guide), look: .guide, frame: guide),
-         PadControl(id: "Menu", title: "Menu", accessibility: "Menu", kind: .button(PadBits.menu), look: .pill, frame: menu)]
+    /// Points per design point: the full size where it fits, times the size setting.
+    private static func unit(in area: CGRect, scale: Double) -> CGFloat {
+        let width = max(2 * shoulderGroup + gap, 2 * column + (isWide(area) ? middleRow + 2 * gap : gap))
+        let height = shoulder.height + gap + columnHeight + (isWide(area) ? 0 : gap + guide)
+        return max(0.4, min(area.width / width, area.height / height, 1) * min(scale, 1))
     }
 
     private static func face(center: CGPoint, diameter: CGFloat, reach: CGFloat) -> [PadControl] {
@@ -157,8 +189,9 @@ enum PadLayout {
                 PadControl(id: "A", title: "A", accessibility: "A", kind: .button(PadBits.a), look: .face(xbox.a), frame: at(0, 1))]
     }
 
-    private static func dpad(_ frame: CGRect) -> PadControl {
-        PadControl(id: "dpad", title: "", accessibility: "D-pad", kind: .dpad, look: .dpad, frame: frame)
+    private static func stickClick(left: Bool, _ frame: CGRect) -> PadControl {
+        PadControl(id: left ? "L3" : "R3", title: left ? "L3" : "R3", accessibility: left ? "Left Stick Click" : "Right Stick Click",
+                   kind: .button(left ? PadBits.leftClick : PadBits.rightClick), look: .click, frame: frame)
     }
 
     private static func stick(left: Bool, _ frame: CGRect) -> PadControl {
@@ -190,7 +223,8 @@ struct PadHeld: Equatable {
 @Observable
 final class OnScreenGamepadModel {
     var controls: [PadControl] = []
-    var landscape = false
+    /// Lying over the desktop (landscape): clear glass, so the picture shows.
+    var overDesktop = false
     var opacity = 1.0
     private(set) var held = PadHeld.idle
     /// Called with each new state.
@@ -264,14 +298,13 @@ final class OnScreenGamepadView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// Lays the controls out for this size; `safe` is where landscape's columns go.
-    func layout(landscape: Bool, safe: CGRect, scale: Double, opacity: Double) {
+    /// Lays the controls out in `area` (in the view's coordinates); `overDesktop` in landscape.
+    func layout(area: CGRect, overDesktop: Bool, scale: Double, opacity: Double) {
         host.view.frame = bounds
         touchView.frame = bounds
-        let controls = PadLayout.controls(size: bounds.size, safe: safe, landscape: landscape, scale: scale)
+        let controls = PadLayout.controls(in: area, scale: scale)
         if model.controls != controls { model.controls = controls }
-        if model.landscape != landscape { model.landscape = landscape }
-        let opacity = landscape ? opacity : 1
+        if model.overDesktop != overDesktop { model.overDesktop = overDesktop }
         if model.opacity != opacity { model.opacity = opacity }
         touchView.controls = controls
     }
@@ -319,10 +352,11 @@ private struct PadControlView: View {
     var body: some View {
         Group {
             switch control.look {
-            case .face(let color): face(color)
+            case .face(let color): round(Text(control.title).font(label(control.frame.width * 0.4)), tint: color)
             case .shoulder: flat(shape: RoundedRectangle(cornerRadius: control.frame.height * 0.32, style: .continuous))
             case .pill: flat(shape: Capsule())
-            case .guide: guide
+            case .click: round(Text(control.title).font(label(control.frame.width * 0.36)), tint: nil)
+            case .guide: round(Image(systemName: "xbox.logo").font(.system(size: control.frame.width * 0.48, weight: .medium)), tint: nil)
             case .dpad: dpad
             case .stick: stick
             }
@@ -333,7 +367,7 @@ private struct PadControlView: View {
         .modifier(PadAccessibilityActions(control: control, model: model))
     }
 
-    private var landscape: Bool { model.landscape }
+    private var overDesktop: Bool { model.overDesktop }
 
     private var bits: UInt32 {
         if case .button(let bits) = control.kind { return bits }
@@ -344,27 +378,24 @@ private struct PadControlView: View {
         .custom(Typography.postScriptName, fixedSize: size)
     }
 
-    /// Over the desktop the glass is clear, so the picture shows; upright it's the regular one.
+    /// Over the desktop the glass is clear (a little darkened so it reads over white windows),
+    /// so the picture shows; on the plain background upright it's tinted dark, as RetroPlay's
+    /// PSP pad. The labels are light on both.
     private func glass(tint: Color?, held: Bool) -> Glass {
         if held { return .regular.tint((tint ?? .accentColor).opacity(0.85)) }
-        // Over the desktop: clear glass, a little darkened so it reads over white windows and in dark mode
-        if landscape { return tint.map { .clear.tint($0.opacity(0.25)) } ?? .clear.tint(.black.opacity(0.22)) }
-        return tint.map { .regular.tint($0.opacity(0.7)) } ?? .regular
+        if overDesktop { return tint.map { .clear.tint($0.opacity(0.25)) } ?? .clear.tint(.black.opacity(0.22)) }
+        return .regular.tint((tint ?? PadPalette.nub).opacity(0.8))
     }
 
-    private var ink: Color {
-        landscape ? .white : .primary
-    }
-
-    private func face(_ color: Color) -> some View {
+    /// A, B, X, Y (their colour on the label over the desktop), L3, R3 and the Xbox button.
+    private func round<Label: View>(_ label: Label, tint: Color?) -> some View {
         let held = model.isHeld(bits)
         let diameter = control.frame.width
-        return Text(control.title)
-            .font(label(diameter * 0.4))
-            .foregroundStyle(landscape && !held ? color : .white)
-            .shadow(color: .black.opacity(landscape ? 0.5 : 0), radius: 2)
+        return label
+            .foregroundStyle(overDesktop && !held ? tint ?? .white : .white)
+            .shadow(color: .black.opacity(overDesktop ? 0.5 : 0), radius: 2)
             .frame(width: diameter, height: diameter)
-            .glassEffect(glass(tint: color, held: held), in: .circle)
+            .glassEffect(glass(tint: tint, held: held), in: .circle)
             .scaleEffect(held ? 0.92 : 1)
             .animation(.easeOut(duration: 0.06), value: held)
             .accessibilityAddTraits(.isButton)
@@ -374,10 +405,11 @@ private struct PadControlView: View {
         let held = model.isHeld(bits)
         return Text(control.title)
             .font(label(min(control.frame.height * 0.42, 17)))
-            .foregroundStyle(held ? .white : ink)
-            .shadow(color: .black.opacity(landscape ? 0.5 : 0), radius: 2)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(overDesktop ? 0.5 : 0), radius: 2)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
+            .padding(.horizontal, 4)
             .frame(width: control.frame.width, height: control.frame.height)
             .glassEffect(glass(tint: nil, held: held), in: shape)
             .scaleEffect(held ? 0.95 : 1)
@@ -385,25 +417,13 @@ private struct PadControlView: View {
             .accessibilityAddTraits(.isButton)
     }
 
-    private var guide: some View {
-        let held = model.isHeld(bits)
-        return Image(systemName: "xbox.logo")
-            .font(.system(size: control.frame.width * 0.48, weight: .medium))
-            .foregroundStyle(held ? .white : ink)
-            .shadow(color: .black.opacity(landscape ? 0.5 : 0), radius: 2)
-            .frame(width: control.frame.width, height: control.frame.height)
-            .glassEffect(glass(tint: nil, held: held), in: .circle)
-            .scaleEffect(held ? 0.92 : 1)
-            .animation(.easeOut(duration: 0.06), value: held)
-            .accessibilityAddTraits(.isButton)
-    }
-
+    /// RetroPlay's PadDPad (the PSP's colours): clear glass over the desktop.
     private var dpad: some View {
         let size = control.frame.width
         let arm = size * 0.36
         let travel = (size - arm) / 2
         return ZStack {
-            Color.clear.glassEffect(glass(tint: nil, held: false), in: PlusShape(armThickness: arm))
+            Color.clear.glassEffect(overDesktop ? .clear : .regular.tint(PadPalette.dpad.opacity(0.8)), in: PlusShape(armThickness: arm))
             ForEach([(PadBits.up, "arrowtriangle.up.fill", CGSize(width: 0, height: -travel)),
                      (PadBits.down, "arrowtriangle.down.fill", CGSize(width: 0, height: travel)),
                      (PadBits.left, "arrowtriangle.left.fill", CGSize(width: -travel, height: 0)),
@@ -411,34 +431,36 @@ private struct PadControlView: View {
                 let held = model.isHeld(bits)
                 ZStack {
                     RoundedRectangle(cornerRadius: arm * 0.2, style: .continuous)
-                        .fill(Color.accentColor.opacity(held ? 0.85 : 0))
+                        .fill(PadPalette.nub.opacity(held ? 1 : 0))
                         .frame(width: arm * 0.86, height: arm * 0.86)
                     Image(systemName: symbol)
-                        .font(.system(size: max(8, arm * 0.28), weight: .bold))
-                        .foregroundStyle(held ? Color.white : ink.opacity(0.7))
-                        .shadow(color: .black.opacity(landscape ? 0.6 : 0), radius: 2)
+                        .font(.system(size: max(8, arm * 0.24), weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.78).opacity(held ? 1 : 0.5))
                 }
                 .offset(offset)
                 .animation(.easeOut(duration: 0.06), value: held)
             }
+            Circle()
+                .fill(Color.black.opacity(0.25))
+                .frame(width: arm * 0.42, height: arm * 0.42)
         }
         .frame(width: size, height: size)
         .accessibilityAddTraits(.isButton)
     }
 
+    /// RetroPlay's PadStick as on its PSP pad (round, not octagonal): the knob goes where the
+    /// thumb is, clear glass over the desktop.
     private var stick: some View {
         let size = control.frame.width
-        let travel = size * 0.3
+        let travel = size * PadTouchView.stickTravelFraction
         let left = control.kind == .stick(left: true)
         let value = left ? model.held.left : model.held.right
-        let moved = value != .zero
         return ZStack {
-            Color.clear.glassEffect(glass(tint: nil, held: false), in: .circle)
+            Color.clear.glassEffect(overDesktop ? .clear : .regular.tint(PadPalette.gate.opacity(0.8)), in: .circle)
             Color.clear
                 .frame(width: size * 0.46, height: size * 0.46)
-                .glassEffect(moved ? .regular.tint(Color.accentColor.opacity(0.7)) : (landscape ? .regular.tint(.white.opacity(0.2)) : .regular),
-                             in: .circle)
-                .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
+                .glassEffect(overDesktop ? .clear : .regular.tint(PadPalette.nub.opacity(0.8)), in: .circle)
+                .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
                 .offset(x: value.dx * travel, y: -value.dy * travel)
         }
         .frame(width: size, height: size)
@@ -495,7 +517,8 @@ private struct PlusShape: Shape {
 
 /// Every touch on the pad (RetroPlay's PadTouchView): any number of fingers at once; a thumb
 /// slides between buttons and holds both in the gap; a D-pad or stick touch keeps steering
-/// off its edge; a slightly missed tap goes to the nearest control; a new press ticks.
+/// off its edge; a slightly missed tap goes to the nearest control; a new press ticks (a
+/// button or a D-pad direction; a stick doesn't).
 final class PadTouchView: UIView {
     weak var model: OnScreenGamepadModel?
     var controls: [PadControl] = [] {
@@ -503,16 +526,20 @@ final class PadTouchView: UIView {
     }
 
     /// Reach around each control, in points.
-    private let slop: CGFloat = 12
+    private let slop: CGFloat = 14
     /// Round buttons are hit a little outside their circle, so neighbours overlap (both held).
     private let buttonReach: CGFloat = 1.12
-    /// Stick travel ignored around where the thumb landed (0–1 of full tilt).
-    static let deadzone: CGFloat = 0.1
+    /// How far a stick's knob moves from its centre at full tilt, as a share of its size.
+    static let stickTravelFraction: CGFloat = 0.30
+    /// How far the thumb moves for full tilt: three quarters of the knob's travel (RetroPlay's
+    /// `PadStick.touchTravelFraction`: a thumb's touch point sits a little inside where it feels
+    /// it's pressing, so at 1:1 a full push often read as 70–80 %). Past it, full tilt.
+    static let stickTouchFraction: CGFloat = stickTravelFraction * 0.75
 
     private enum Track {
         case buttons(UInt32)
         case dpad(id: String, bits: UInt32)
-        case stick(id: String, left: Bool, origin: CGPoint, value: CGVector)
+        case stick(id: String, left: Bool, stick: TouchStick, value: CGVector)
     }
 
     private var tracks: [ObjectIdentifier: Track] = [:]
@@ -545,8 +572,10 @@ final class PadTouchView: UIView {
             case .dpad:
                 tracks[key] = .dpad(id: control.id, bits: dpadBits(control, point))
             case .stick(let left):
-                // Zero where the thumb lands; the tilt is measured from there
-                tracks[key] = .stick(id: control.id, left: left, origin: point, value: .zero)
+                // The stick's centre is zero, and the knob goes where the thumb is
+                let stick = TouchStick(originX: control.frame.midX, originY: control.frame.midY,
+                                       radius: min(control.frame.width, control.frame.height) * Self.stickTouchFraction)
+                tracks[key] = .stick(id: control.id, left: left, stick: stick, value: Self.value(stick, point))
             }
         }
         emit()
@@ -565,19 +594,8 @@ final class PadTouchView: UIView {
             case .dpad(let id, _):
                 guard let control = controls.first(where: { $0.id == id }) else { continue }
                 tracks[key] = .dpad(id: id, bits: dpadBits(control, point))
-            case .stick(let id, let left, var origin, _):
-                guard let control = controls.first(where: { $0.id == id }) else { continue }
-                let radius = max(36, control.frame.width * 0.38)
-                // Past the rim the centre follows the thumb, so turning back answers at once
-                var dx = point.x - origin.x, dy = point.y - origin.y
-                let distance = hypot(dx, dy)
-                if distance > radius {
-                    origin.x += dx / distance * (distance - radius)
-                    origin.y += dy / distance * (distance - radius)
-                    dx = point.x - origin.x
-                    dy = point.y - origin.y
-                }
-                tracks[key] = .stick(id: id, left: left, origin: origin, value: Self.stickValue(dx: dx, dy: dy, radius: radius))
+            case .stick(let id, let left, let stick, _):
+                tracks[key] = .stick(id: id, left: left, stick: stick, value: Self.value(stick, point))
             }
         }
         emit()
@@ -604,13 +622,10 @@ final class PadTouchView: UIView {
         emit()
     }
 
-    /// −1…1 with up positive; the dead zone is taken out so the tilt starts smoothly from it.
-    static func stickValue(dx: CGFloat, dy: CGFloat, radius: CGFloat) -> CGVector {
-        let x = dx / radius, y = -dy / radius
-        let magnitude = hypot(x, y)
-        guard magnitude > deadzone else { return .zero }
-        let scaled = (min(magnitude, 1) - deadzone) / (1 - deadzone)
-        return CGVector(dx: x / magnitude * scaled, dy: y / magnitude * scaled)
+    /// −1…1 with up positive (RetroPlay's TouchStick: an 8 % dead zone, taken out smoothly).
+    private static func value(_ stick: TouchStick, _ point: CGPoint) -> CGVector {
+        let value = stick.update(x: point.x, y: point.y)
+        return CGVector(dx: value.x, dy: value.y)
     }
 
     // MARK: Geometry
@@ -685,16 +700,16 @@ final class PadTouchView: UIView {
         return 0
     }
 
-    /// Eight ways around the centre, with a small dead middle.
+    /// Eight ways around the centre, with a small dead middle (RetroPlay's D-pad).
     private func dpadBits(_ control: PadControl, _ point: CGPoint) -> UInt32 {
-        let dx = point.x - control.frame.midX, dy = point.y - control.frame.midY
-        guard hypot(dx, dy) >= control.frame.width * 0.12 else { return 0 }
-        let diagonal: CGFloat = 0.42
+        let size = Double(min(control.frame.width, control.frame.height))
+        let directions = PadHitTesting.dpad(dx: point.x - control.frame.midX, dy: point.y - control.frame.midY,
+                                            deadzone: size * 0.12, diagonalRatio: 0.42)
         var bits: UInt32 = 0
-        if dy < 0 && abs(dy) >= abs(dx) * diagonal { bits |= PadBits.up }
-        if dy > 0 && abs(dy) >= abs(dx) * diagonal { bits |= PadBits.down }
-        if dx < 0 && abs(dx) >= abs(dy) * diagonal { bits |= PadBits.left }
-        if dx > 0 && abs(dx) >= abs(dy) * diagonal { bits |= PadBits.right }
+        if directions.up { bits |= PadBits.up }
+        if directions.down { bits |= PadBits.down }
+        if directions.left { bits |= PadBits.left }
+        if directions.right { bits |= PadBits.right }
         return bits
     }
 

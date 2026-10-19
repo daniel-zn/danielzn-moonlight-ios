@@ -361,9 +361,9 @@ struct SettingsPage: View {
             .pickerStyle(.segmented)
             .accessibilityIdentifier("settings.gamepadSize")
             VStack(alignment: .leading, spacing: 6) {
-                Text("Opacity over the desktop")
+                Text("Opacity")
                 Slider(value: $onScreenGamepadOpacity, in: 0.3...1) {
-                    Text("Opacity over the desktop")
+                    Text("Opacity")
                 } minimumValueLabel: {
                     Image(systemName: "circle.dotted").accessibilityHidden(true)
                 } maximumValueLabel: {

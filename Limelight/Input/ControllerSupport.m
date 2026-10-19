@@ -375,7 +375,8 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
         if (!_virtualArrived && (_multiController || _controllers.count == 0)) {
             _virtualArrived = LiSendControllerArrivalEvent(_virtualNumber, [self getActiveGamepadMask], LI_CTYPE_XBOX,
                                                            PLAY_FLAG | BACK_FLAG | UP_FLAG | DOWN_FLAG | LEFT_FLAG | RIGHT_FLAG |
-                                                           LB_FLAG | RB_FLAG | A_FLAG | B_FLAG | X_FLAG | Y_FLAG | SPECIAL_FLAG,
+                                                           LB_FLAG | RB_FLAG | A_FLAG | B_FLAG | X_FLAG | Y_FLAG | SPECIAL_FLAG |
+                                                           LS_CLK_FLAG | RS_CLK_FLAG,
                                                            0) == 0;
         }
         ArtemisPadState state = { buttons, leftTrigger, rightTrigger, leftStickX, leftStickY, rightStickX, rightStickY };

@@ -37,7 +37,7 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 | "Quit Game" / "End Game on PC…" | Menu, confirmation | "Stop", confirmation ("Stop *app* on *PC*?"), swipe | ✅ |
 | "Launch Automatically When Opening PC" | Checkable, one per PC; disabled for hidden apps | "Connect Automatically When Opening PC", the same rules; the row says "Connects automatically"; skipped when another app is active | ✅ |
 | "Hide Game" | Checkable; not for the running or the automatic app | "Hide App" / "Show App", swipe; the same rules | ✅ |
-| Search | — | Search field | ✅ |
+| Search | — | — (removed in Oct 2026: no search field at the bottom of the apps) | ✅ |
 | Refresh | Toolbar "Update" | ⋯ › Refresh, pull to refresh | ✅ |
 
 ## Menu bar (Mac) → iPhone
@@ -108,7 +108,7 @@ desktop (apps rather than games, a session rather than a stream). Checked agains
 |---|---|---|
 | Keyboard, mouse | Touch controls (docs/TOUCH.md), the iOS keyboard with a key row, hardware keyboards and mice | ✅ |
 | Gamepads passed to the PC | Xbox, PlayStation and MFi controllers (GameController): buttons, sticks, triggers, rumble, motion, touchpad, battery, LED (upstream's on-screen controls stay off) | ✅ |
-| ➖ (no touch screen) | On-screen controller from the control bar: an Xbox controller on the PC; in the trackpad's place upright, over the desktop in landscape; size and opacity in Settings › Controllers | ➕ |
+| ➖ (no touch screen) | On-screen controller from the control bar: an Xbox controller on the PC (sticks, D-pad, A B X Y, bumpers, triggers, Select, Start, Xbox, L3 / R3); one layout in the trackpad's place upright and over the desktop in landscape; size and opacity in Settings › Controllers | ➕ |
 | Gamepad mouse: hold Start 0.75 s; stick moves, A/B/X click, LB/RB back/forward, D-pad scrolls; "Gamepad mouse mode active" notice | Same, plus the right stick scrolls and Y opens the keyboard; "Controller mouse on" notice | ✅ |
 | Start+Select+L1+R1 disconnects | Same | ✅ |
 | Select+L1+R1+X stats overlay | ➖ not in upstream iOS (setting in Video & Display) | ➖ |

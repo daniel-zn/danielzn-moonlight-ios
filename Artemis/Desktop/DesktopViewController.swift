@@ -73,7 +73,7 @@ final class DesktopViewController: UIViewController {
         session = DesktopSession(title: title, mode: absolute ? .direct : .trackpad, barExpanded: pointer.showControlBar)
         let saved = UserDefaults.standard.string(forKey: "ArtemisBarCenter").map(NSCoder.cgPoint(for:))
         barCenter = saved ?? CGPoint(x: 0.5, y: 0.92)
-        gamepadBarCenter = UserDefaults.standard.string(forKey: "ArtemisGamepadBarCenter").map(NSCoder.cgPoint(for:))
+        gamepadBarCenter = UserDefaults.standard.string(forKey: "ArtemisGamepadBarCenter2").map(NSCoder.cgPoint(for:))
         self.localCursor = localCursor ? UIImageView(image: DesktopViewController.cursorImage) : nil
         super.init(nibName: nil, bundle: nil)
     }
@@ -208,19 +208,21 @@ final class DesktopViewController: UIViewController {
             trackpadArea.frame = area
             gamepad.frame = area
             gamepad.isHidden = !session.gamepadShown || area.height < 60
-            gamepad.layout(landscape: false, safe: gamepad.bounds, scale: padSize, opacity: 1)
+            gamepad.layout(area: gamepad.bounds, overDesktop: false, scale: padSize, opacity: AppPreferences.onScreenGamepadOpacity)
         } else {
             // Full screen; the controller lies over it, inside the safe area
             canvas.frame = bounds
             trackpadArea.isHidden = true
             gamepad.frame = bounds
             gamepad.isHidden = !session.gamepadShown
-            let safe = CGRect(x: insets.left + 12, y: max(insets.top, 10),
-                              width: bounds.width - insets.left - insets.right - 24,
-                              height: bounds.height - max(insets.top, 10) - max(insets.bottom, 10))
-            gamepad.layout(landscape: true, safe: safe, scale: padSize, opacity: AppPreferences.onScreenGamepadOpacity)
+            // Inside the safe area, a thumb's margin from the sides (more where there's no notch)
+            // and clear of the home indicator
+            let left = max(insets.left + 8, 16), right = max(insets.right + 8, 16)
+            let top = max(insets.top, 10), bottom = max(insets.bottom, 10)
+            let area = CGRect(x: left, y: top, width: bounds.width - left - right, height: bounds.height - top - bottom)
+            gamepad.layout(area: area, overDesktop: true, scale: padSize, opacity: AppPreferences.onScreenGamepadOpacity)
             let wanted = session.gamepadShown
-                ? gamepadBarCenter ?? PadLayout.barCenter(safe: safe, bounds: bounds.size, barHeight: barSize.height, scale: padSize)
+                ? gamepadBarCenter ?? PadLayout.barCenter(area: area, bounds: bounds.size, barSize: barSize, scale: padSize)
                 : barCenter
             let minX = insets.left + barSize.width / 2 + 8
             let maxX = bounds.width - insets.right - barSize.width / 2 - 8
@@ -561,7 +563,7 @@ final class DesktopViewController: UIViewController {
             let center = CGPoint(x: self.barHost.view.center.x / bounds.width, y: self.barHost.view.center.y / bounds.height)
             if self.session.gamepadShown {
                 self.gamepadBarCenter = center
-                UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisGamepadBarCenter")
+                UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisGamepadBarCenter2")
             } else {
                 self.barCenter = center
                 UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisBarCenter")

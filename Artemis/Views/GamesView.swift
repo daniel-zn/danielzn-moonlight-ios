@@ -11,7 +11,6 @@ import SwiftUI
 struct GamesView: View {
     let hostID: String
     @Environment(ComputerStore.self) private var store
-    @State private var search = ""
     /// Opening another app while one is active: stop that one first?
     @State private var switching: Game?
     /// Stopping the active app.
@@ -20,9 +19,7 @@ struct GamesView: View {
     private var computer: Computer? { store.computer(hostID) }
 
     private var games: [Game] {
-        let all = store.games(for: hostID)
-        guard !search.isEmpty else { return all }
-        return all.filter { $0.name.localizedStandardContains(search) }
+        store.games(for: hostID)
     }
 
     var body: some View {
@@ -55,8 +52,6 @@ struct GamesView: View {
                     ProgressView {
                         Text("Loading apps…").artemisFont(.subheadline)
                     }
-                } else if !search.isEmpty {
-                    ContentUnavailableView.search(text: search)
                 } else {
                     ContentUnavailableView {
                         Label {
@@ -71,8 +66,6 @@ struct GamesView: View {
                 }
             }
         }
-        .searchable(text: $search, prompt: "Search Apps")
-        .searchToolbarBehavior(.minimize)
         .navigationTitle(computer?.name ?? "Apps")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

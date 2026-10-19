@@ -53,8 +53,8 @@ final class OnScreenGamepadTests: XCTestCase {
         sleep(1)
         XCTAssertFalse(app.otherElements["trackpad"].firstMatch.exists, "\(tag): the trackpad is still there")
         XCTAssertEqual(events(desktop, since: count).first, "gamepad connect", "\(tag): \(events(desktop, since: count))")
-        for id in ["pad.A", "pad.B", "pad.X", "pad.Y", "pad.LB", "pad.RB", "pad.LT", "pad.RT", "pad.View", "pad.Menu",
-                   "pad.Guide", "pad.dpad", "pad.leftStick", "pad.rightStick"] {
+        for id in ["pad.A", "pad.B", "pad.X", "pad.Y", "pad.LB", "pad.RB", "pad.LT", "pad.RT", "pad.Select", "pad.Start",
+                   "pad.Guide", "pad.L3", "pad.R3", "pad.dpad", "pad.leftStick", "pad.rightStick"] {
             let element = control(app, id)
             XCTAssertTrue(element.exists, "\(tag): no \(id)")
             XCTAssertGreaterThan(element.frame.minY, desktop.frame.maxY - 1, "\(tag): \(id) over the desktop")
@@ -86,7 +86,7 @@ final class OnScreenGamepadTests: XCTestCase {
         XCTAssertTrue(app.buttons["pad.A"].waitForExistence(timeout: 5), "\(tag): no gamepad")
         sleep(1)
         let screen = desktop.frame
-        for id in ["pad.A", "pad.LT", "pad.RT", "pad.dpad", "pad.leftStick", "pad.rightStick", "pad.Menu"] {
+        for id in ["pad.A", "pad.LT", "pad.RT", "pad.dpad", "pad.leftStick", "pad.rightStick", "pad.Start", "pad.L3", "pad.R3"] {
             let element = control(app, id)
             XCTAssertTrue(element.exists, "\(tag): no \(id)")
             XCTAssertTrue(screen.contains(element.frame), "\(tag): \(id) not over the desktop (\(element.frame) in \(screen))")
@@ -119,7 +119,7 @@ final class OnScreenGamepadTests: XCTestCase {
             app.buttons["bar.gamepad"].tap()
             XCTAssertTrue(app.buttons["pad.A"].waitForExistence(timeout: 5), "\(tag): no gamepad")
             sleep(1)
-            for id in ["bar.keyboard", "bar.gamepad", "bar.disconnect", "pad.A", "pad.LT", "pad.RT", "pad.Menu"] {
+            for id in ["bar.keyboard", "bar.gamepad", "bar.disconnect", "pad.A", "pad.LT", "pad.RT", "pad.Start", "pad.L3", "pad.R3"] {
                 let element = control(app, id)
                 XCTAssertTrue(element.exists, "\(tag): no \(id)")
                 XCTAssertTrue(window.contains(element.frame), "\(tag): \(id) off screen")
@@ -128,6 +128,160 @@ final class OnScreenGamepadTests: XCTestCase {
             app.terminate()
             XCUIDevice.shared.orientation = .portrait
         }
+    }
+
+    /// The layout, upright and in landscape at Small and Large: two columns at the screen's sides
+    /// (the left stick over the D-pad, A B X Y over the right stick, each pair on one centre line),
+    /// the shoulders above them with the stick clicks outside, Select / Xbox / Start in a row at the
+    /// bottom centre.
+    func testGamepadLayout() {
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            for (size, sizeName) in [(0.8, "Small"), (1.0, "Large")] {
+                let tag = "\(appearance)-\(name)-\(sizeName)-layout"
+                let (app, desktop) = connect(orientation: orientation, extra: ["-ArtemisGamepadSize", "\(size)"])
+                app.buttons["bar.gamepad"].tap()
+                XCTAssertTrue(app.buttons["pad.A"].waitForExistence(timeout: 5), "\(tag): no gamepad")
+                sleep(1)
+                layout(app, desktop, tag: tag, portrait: orientation == .portrait)
+                shot("\(tag)-1-shown")
+                app.terminate()
+                XCUIDevice.shared.orientation = .portrait
+            }
+        }
+    }
+
+    private func layout(_ app: XCUIApplication, _ desktop: XCUIElement, tag: String, portrait: Bool) {
+        let window = app.windows.firstMatch.frame
+        func pad(_ id: String) -> CGRect {
+            let element = control(app, "pad.\(id)")
+            XCTAssertTrue(element.exists, "\(tag): no pad.\(id)")
+            return element.exists ? element.frame : .zero
+        }
+        let leftStick = pad("leftStick"), dpad = pad("dpad"), rightStick = pad("rightStick")
+        let a = pad("A"), b = pad("B"), x = pad("X"), y = pad("Y")
+        let face = CGRect(x: x.minX, y: y.minY, width: b.maxX - x.minX, height: a.maxY - y.minY)
+        let select = pad("Select"), guide = pad("Guide"), start = pad("Start")
+
+        // Labels
+        for (id, label) in [("Select", "Select"), ("Start", "Start"), ("L3", "Left Stick Click"), ("R3", "Right Stick Click")] {
+            let button = app.buttons["pad.\(id)"]
+            XCTAssertEqual(button.exists ? button.label : nil, label, "\(tag): \(id)'s label")
+        }
+
+        // Each column on one centre line
+        XCTAssertEqual(leftStick.midX, dpad.midX, accuracy: 1, "\(tag): left stick \(leftStick) and D-pad \(dpad) not in line")
+        XCTAssertEqual(face.midX, rightStick.midX, accuracy: 1, "\(tag): A B X Y \(face) and right stick \(rightStick) not in line")
+        XCTAssertLessThan(leftStick.midY, dpad.midY, "\(tag): the left stick isn't over the D-pad")
+        XCTAssertLessThan(face.midY, rightStick.midY, "\(tag): A B X Y aren't over the right stick")
+        // The columns mirror each other
+        XCTAssertEqual(leftStick.midX - window.minX, window.maxX - rightStick.midX, accuracy: 2, "\(tag): the columns aren't mirrored")
+
+        // At the sides: upright, the trackpad's area (12 pt in); in landscape, the safe area (at most
+        // the Dynamic Island's 62 pt, plus a thumb's margin)
+        let edge: CGFloat = portrait ? 30 : 100
+        let leftEdge = min(leftStick.minX, dpad.minX), rightEdge = max(face.maxX, rightStick.maxX)
+        XCTAssertLessThan(leftEdge - window.minX, edge, "\(tag): the left column isn't at the side (\(leftEdge))")
+        XCTAssertLessThan(window.maxX - rightEdge, edge, "\(tag): the right column isn't at the side (\(rightEdge))")
+        XCTAssertGreaterThanOrEqual(leftEdge, window.minX + 8, "\(tag): the left column touches the edge")
+        XCTAssertLessThanOrEqual(rightEdge, window.maxX - 8, "\(tag): the right column touches the edge")
+
+        // Shoulders over the columns, the stick clicks outside them
+        let lt = pad("LT"), lb = pad("LB"), rb = pad("RB"), rt = pad("RT"), l3 = pad("L3"), r3 = pad("R3")
+        for (shoulder, under, side) in [(lt, leftStick, "LT"), (lb, leftStick, "LB"), (rt, face, "RT"), (rb, face, "RB")] {
+            XCTAssertLessThan(shoulder.maxY, under.minY + 1, "\(tag): \(side) isn't above its column")
+        }
+        XCTAssertLessThan(lt.maxX, lb.minX + 1, "\(tag): LT isn't outside LB")
+        XCTAssertGreaterThan(rt.minX, rb.maxX - 1, "\(tag): RT isn't outside RB")
+        XCTAssertLessThan(l3.maxX, lt.minX + 1, "\(tag): L3 isn't outside LT")
+        XCTAssertGreaterThan(r3.minX, rt.maxX - 1, "\(tag): R3 isn't outside RT")
+        XCTAssertEqual(l3.midY, lt.midY, accuracy: 1, "\(tag): L3 isn't level with the shoulders")
+        XCTAssertEqual(r3.midY, rt.midY, accuracy: 1, "\(tag): R3 isn't level with the shoulders")
+
+        // Select / Xbox / Start: a row, centred, at the bottom
+        XCTAssertEqual(guide.midX, window.midX, accuracy: 1, "\(tag): the Xbox button isn't centred (\(guide))")
+        XCTAssertEqual(select.midY, guide.midY, accuracy: 1, "\(tag): Select isn't in the row")
+        XCTAssertEqual(start.midY, guide.midY, accuracy: 1, "\(tag): Start isn't in the row")
+        XCTAssertEqual(guide.midX - select.midX, start.midX - guide.midX, accuracy: 1, "\(tag): the row isn't centred")
+        XCTAssertLessThan(select.maxX, guide.minX, "\(tag): Select isn't left of the Xbox button")
+        XCTAssertGreaterThan(start.minX, guide.maxX, "\(tag): Start isn't right of the Xbox button")
+        for (other, id) in [(leftStick, "left stick"), (dpad, "D-pad"), (rightStick, "right stick"), (face, "A B X Y"), (lt, "LT")] {
+            XCTAssertGreaterThan(guide.midY, other.midY, "\(tag): the row isn't below the \(id)")
+        }
+        if portrait {
+            let bar = app.buttons["bar.keyboard"].frame
+            XCTAssertLessThan(guide.maxY, bar.minY, "\(tag): the row is under the bar")
+            XCTAssertGreaterThan(guide.maxY, bar.minY - 40, "\(tag): the row isn't at the bottom (\(guide), bar \(bar))")
+        } else {
+            XCTAssertGreaterThan(guide.maxY, window.maxY - 50, "\(tag): the row isn't at the bottom (\(guide))")
+            XCTAssertLessThanOrEqual(guide.maxY, window.maxY - 20, "\(tag): the row is over the home indicator (\(guide))")
+        }
+
+        // On screen, nothing overlapping
+        let all = [("leftStick", leftStick), ("dpad", dpad), ("rightStick", rightStick), ("ABXY", face), ("Select", select),
+                   ("Guide", guide), ("Start", start), ("LT", lt), ("LB", lb), ("RB", rb), ("RT", rt), ("L3", l3), ("R3", r3)]
+        for (index, (id, frame)) in all.enumerated() {
+            XCTAssertTrue(window.contains(frame), "\(tag): \(id) off screen (\(frame))")
+            if portrait {
+                XCTAssertGreaterThan(frame.minY, desktop.frame.maxY - 1, "\(tag): \(id) over the desktop")
+            }
+            for (otherID, other) in all.dropFirst(index + 1) {
+                XCTAssertFalse(frame.insetBy(dx: 1, dy: 1).intersects(other), "\(tag): \(id) overlaps \(otherID)")
+            }
+        }
+        if !portrait {
+            // The bar, between the shoulders, covers nothing
+            let bar = app.buttons["bar.keyboard"]
+            XCTAssertTrue(bar.isHittable, "\(tag): the bar is covered")
+        }
+    }
+
+    // MARK: The folded bar and the apps
+
+    /// The apps have no search field; the folded control bar fades after 5 s untouched, a
+    /// touch brings it back, and it fades again after another 5 s.
+    func testFoldedBarFades() {
+        let tag = "\(appearance)-landscape-folded-bar"
+        let app = XCUIApplication()
+        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"]
+        app.launch()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let enchilada = app.buttons["computer.ENCHILADA"]
+        XCTAssertTrue(enchilada.waitForExistence(timeout: 15))
+        enchilada.tap()
+        XCTAssertTrue(app.buttons["game.Desktop"].waitForExistence(timeout: 10))
+        sleep(1)
+        XCTAssertEqual(app.searchFields.count, 0, "\(tag): the apps have a search field")
+        XCTAssertFalse(app.buttons["Search"].exists, "\(tag): the apps have a search button")
+        XCTAssertTrue(app.buttons["More"].exists, "\(tag): no ⋯ menu on the apps")
+        shot("\(appearance)-landscape-apps-no-search")
+        app.buttons["game.Desktop"].tap()
+
+        XCTAssertTrue(app.buttons["bar.fold"].waitForExistence(timeout: 10), "\(tag): no bar")
+        app.buttons["bar.fold"].tap()
+        let folded = control(app, "bar.unfold")
+        XCTAssertTrue(folded.waitForExistence(timeout: 5), "\(tag): no folded bar")
+        XCTAssertEqual(folded.value as? String ?? "", "", "\(tag): faded at once")
+        shot("\(tag)-1-glass")
+        sleep(7)
+        XCTAssertEqual(folded.value as? String, "Faded", "\(tag): didn't fade after 5 s")
+        XCTAssertTrue(folded.isHittable, "\(tag): not tappable faded")
+        shot("\(tag)-2-faded")
+        // A touch (a short drag that doesn't unfold it) brings the glass back
+        let start = folded.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -40, dy: 0)))
+        sleep(1)
+        XCTAssertEqual(folded.value as? String ?? "", "", "\(tag): a touch didn't bring the glass back")
+        sleep(7)
+        XCTAssertEqual(folded.value as? String, "Faded", "\(tag): didn't fade again")
+        // Faded, a tap still unfolds the bar
+        folded.tap()
+        XCTAssertTrue(app.buttons["bar.disconnect"].waitForExistence(timeout: 3), "\(tag): the faded bar didn't unfold")
+        app.buttons["bar.fold"].tap()
+        XCTAssertTrue(folded.waitForExistence(timeout: 3), "\(tag): didn't fold")
+        XCTAssertEqual(folded.value as? String ?? "", "", "\(tag): folded again, it's still faded")
+        app.terminate()
+        XCUIDevice.shared.orientation = .portrait
     }
 
     // MARK: Controls
@@ -148,14 +302,16 @@ final class OnScreenGamepadTests: XCTestCase {
         new = events(desktop, since: count)
         XCTAssertEqual(new, ["gamepad 0x0000 lt 0 rt 255 ls 0 0 rs 0 0", "gamepad 0x0000 lt 0 rt 0 ls 0 0 rs 0 0"], "\(tag) RT: \(new)")
 
-        // Guide and Menu
+        // Xbox, Start (the Xbox controller's Start / Menu), Select (its Back / View) and the stick clicks
         count = state(desktop).count
-        app.buttons["pad.Guide"].tap()
-        app.buttons["pad.Menu"].tap()
+        for id in ["Guide", "Start", "Select", "L3", "R3"] {
+            app.buttons["pad.\(id)"].tap()
+        }
         sleep(1)
         new = events(desktop, since: count)
-        XCTAssertEqual(new.filter { !$0.hasPrefix("gamepad 0x0000") }, ["gamepad 0x0400 lt 0 rt 0 ls 0 0 rs 0 0", "gamepad 0x0010 lt 0 rt 0 ls 0 0 rs 0 0"],
-                       "\(tag) Guide, Menu: \(new)")
+        XCTAssertEqual(new.filter { !$0.hasPrefix("gamepad 0x0000") },
+                       ["0x0400", "0x0010", "0x0020", "0x0040", "0x0080"].map { "gamepad \($0) lt 0 rt 0 ls 0 0 rs 0 0" },
+                       "\(tag) Xbox, Start, Select, L3, R3: \(new)")
 
         // The D-pad's top: up
         count = state(desktop).count
@@ -219,10 +375,11 @@ final class OnScreenGamepadTests: XCTestCase {
         }
     }
 
-    private func connect(size: String = "UICTContentSizeCategoryL", orientation: UIDeviceOrientation) -> (XCUIApplication, XCUIElement) {
+    private func connect(size: String = "UICTContentSizeCategoryL", orientation: UIDeviceOrientation,
+                         extra: [String] = []) -> (XCUIApplication, XCUIElement) {
         let app = XCUIApplication()
         app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", size,
-                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"]
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"] + extra
         app.launch()
         XCUIDevice.shared.orientation = orientation
         let enchilada = app.buttons["computer.ENCHILADA"]

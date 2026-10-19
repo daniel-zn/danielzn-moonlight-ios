@@ -68,18 +68,7 @@ struct ControlBar: View {
 
     /// Folded into a round button that can be dragged anywhere.
     private var folded: some View {
-        Image(systemName: "menubar.rectangle")
-            .font(.system(size: 20, weight: .medium))
-            .frame(width: 52, height: 52)
-            .contentShape(.circle)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .gesture(moveGesture)
-            .onTapGesture { session.actions.setBarExpanded(true) }
-            .accessibilityElement()
-            .accessibilityLabel("Control Bar")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { session.actions.setBarExpanded(true) }
-            .accessibilityIdentifier("bar.unfold")
+        FoldedBar(session: session)
     }
 
     private var grip: some View {
@@ -175,6 +164,66 @@ struct ControlBar: View {
         }
         .accessibilityLabel("Disconnect")
         .accessibilityIdentifier("bar.disconnect")
+    }
+}
+
+/// The folded bar: a round glass button that, left untouched for a few seconds, fades to a flat,
+/// faint one so it hides over the desktop. A touch brings the glass back at once (and still
+/// does what it does: a tap unfolds the bar, a drag moves it); the wait starts again after each.
+private struct FoldedBar: View {
+    let session: DesktopSession
+    /// How long it stays glass after a touch.
+    static var fadeDelay: Duration { .seconds(5) }
+
+    @State private var faded = false
+    /// Bumped by each touch: restarts the wait.
+    @State private var touches = 0
+
+    var body: some View {
+        Image(systemName: "menubar.rectangle")
+            .font(.system(size: 20, weight: .medium))
+            .foregroundStyle(faded ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            .frame(width: 52, height: 52)
+            .background {
+                // Faded: a flat, muted disc instead of the glass
+                Circle().fill(Color(white: 0.5).opacity(faded ? 0.35 : 0))
+            }
+            .contentShape(.circle)
+            .glassEffect(faded ? .identity : .regular.interactive(), in: .circle)
+            .opacity(faded ? 0.45 : 1)
+            .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                .onChanged {
+                    wake()
+                    session.actions.moveBar($0.translation)
+                }
+                .onEnded { _ in
+                    wake()
+                    session.actions.endMoveBar()
+                })
+            .onTapGesture {
+                wake()
+                session.actions.setBarExpanded(true)
+            }
+            .task(id: touches) {
+                guard (try? await Task.sleep(for: Self.fadeDelay)) != nil else { return }
+                withAnimation(.easeInOut(duration: 0.8)) { faded = true }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Control Bar")
+            .accessibilityValue(faded ? "Faded" : "")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                wake()
+                session.actions.setBarExpanded(true)
+            }
+            .accessibilityIdentifier("bar.unfold")
+    }
+
+    private func wake() {
+        if faded {
+            withAnimation(.easeOut(duration: 0.15)) { faded = false }
+        }
+        touches &+= 1
     }
 }
 
