@@ -445,6 +445,7 @@ struct SettingsPage: View {
     private var general: some View {
         Section {
             LabeledContent("Version", value: Self.version)
+                .accessibilityIdentifier("settings.version")
         } header: {
             Note("About")
         }

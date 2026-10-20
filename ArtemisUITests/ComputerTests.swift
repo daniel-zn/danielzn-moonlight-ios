@@ -287,6 +287,23 @@ final class ComputerTests: XCTestCase {
         }
     }
 
+    /// Settings › General shows Artemis's own version (1.0, not upstream Moonlight's 9.0.2)
+    /// and the build number.
+    func testVersionRow() {
+        let app = launch()
+        app.buttons["computers.settings"].tap()
+        let general = app.buttons["settings.general"]
+        XCTAssertTrue(reveal(general, in: app), "no General section")
+        general.tap()
+        let row = app.descendants(matching: .any)["settings.version"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "no Version row")
+        let text = [row.label, row.value as? String ?? ""].joined(separator: " ")
+        XCTAssertNotNil(text.range(of: #"1\.0 \(\d+\)"#, options: .regularExpression), "Version reads \(text)")
+        XCTAssertFalse(text.contains("9.0"), "still upstream's version: \(text)")
+        shot("\(appearance)-portrait-L-version")
+        app.terminate()
+    }
+
     // MARK: Crashes
 
     /// Daniel's crash (build 1267): long-pressing Apollo's own apps (Steam Big Picture, Virtual
