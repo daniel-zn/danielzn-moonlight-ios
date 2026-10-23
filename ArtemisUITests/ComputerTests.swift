@@ -152,11 +152,43 @@ final class ComputerTests: XCTestCase {
         XCTAssertTrue(waitForLabel(livingRoom, contains: "Waking up", timeout: 3), "no Waking up (\(livingRoom.label))")
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 15), "no message after the wake timed out")
-        XCTAssertTrue(alert.label.contains("Didn't Wake Up"), "alert: \(alert.label)")
+        XCTAssertTrue(alert.label.contains("Couldn't Wake Living Room PC"), "alert: \(alert.label)")
         shot("\(appearance)-portrait-L-wake-5-timeout")
         alert.buttons["OK"].tap()
         XCTAssertTrue(waitForLabel(livingRoom, contains: "Offline", timeout: 3), "status: \(livingRoom.label)")
         XCTAssertFalse(livingRoom.label.contains("Waking"), "still waking: \(livingRoom.label)")
+        app.terminate()
+    }
+
+    /// A paired PC that goes to sleep (-ArtemisDemoSleep: an answer over plain HTTP only, then
+    /// none) stays paired: "Offline · Tap to wake", never "Not paired", and a tap wakes it
+    /// instead of asking for a PIN. A wake that doesn't bring it up says so.
+    func testSleepingPCStaysPaired() {
+        let app = launch(["-ArtemisDemoSleep", "YES", "-ArtemisDemoWakeDelay", "9999", "-ArtemisWakeTimeout", "6"])
+        let enchilada = app.buttons["computer.ENCHILADA"]
+        var seen: [String] = []
+        // Several of its polls (one a second), each label it shows on the way
+        let end = Date().addingTimeInterval(7)
+        while Date() < end {
+            let label = enchilada.label
+            if seen.last != label { seen.append(label) }
+            usleep(200_000)
+        }
+        XCTAssertFalse(seen.contains { $0.contains("Not paired") }, "a sleeping paired PC showed as not paired: \(seen)")
+        XCTAssertTrue(waitForLabel(enchilada, contains: "Offline · Tap to wake", timeout: 3), "status: \(enchilada.label) (\(seen))")
+        shot("\(appearance)-portrait-L-sleep-1-offline")
+
+        enchilada.tap()
+        XCTAssertTrue(waitForLabel(enchilada, contains: "Waking up", timeout: 3), "no Waking up (\(enchilada.label))")
+        XCTAssertFalse(app.staticTexts["pairing.pin"].waitForExistence(timeout: 2), "a tap on a sleeping paired PC asked to pair")
+        shot("\(appearance)-portrait-L-sleep-2-waking")
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 15), "no message after the wake timed out")
+        XCTAssertTrue(alert.label.contains("Couldn't Wake ENCHILADA"), "alert: \(alert.label)")
+        shot("\(appearance)-portrait-L-sleep-3-couldnt-wake")
+        alert.buttons["OK"].tap()
+        XCTAssertTrue(waitForLabel(enchilada, contains: "Offline · Tap to wake", timeout: 3), "status: \(enchilada.label)")
+        XCTAssertFalse(app.staticTexts["pairing.pin"].exists, "the PIN sheet came up")
         app.terminate()
     }
 

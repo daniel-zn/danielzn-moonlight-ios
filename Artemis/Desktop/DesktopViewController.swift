@@ -439,6 +439,10 @@ final class DesktopViewController: UIViewController {
 
     @objc private func keyboardChanged(_ notification: Notification) {
         let shown = keyCapture.isFirstResponder
+        // Closed by a swipe down on the key row: hardware keyboards type into the desktop again
+        if !shown && notification.name == UIResponder.keyboardDidHideNotification && view.window != nil && !contentView.isFirstResponder {
+            contentView.becomeFirstResponder()
+        }
         if session.keyboardShown != shown {
             session.keyboardShown = shown
             relayoutBar()
@@ -447,24 +451,17 @@ final class DesktopViewController: UIViewController {
     }
 
     private func makeKeyRow() -> UIView {
-        let host = UIHostingController(rootView: KeyRow(session: session).artemisFont(.body))
-        host.view.backgroundColor = .clear
-        let container = UIInputView(frame: CGRect(x: 0, y: 0, width: 400, height: 54), inputViewStyle: .keyboard)
-        container.allowsSelfSizing = false
-        container.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(host.view)
-        NSLayoutConstraint.activate([
-            host.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            host.view.topAnchor.constraint(equalTo: container.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-        keyRowHost = host
-        return container
+        let row = KeyRowView(session: session)
+        row.onHighlightChange = { [weak self] in self?.updateAccessibilityValue() }
+        row.onFlickDown = { [weak self] in
+            guard let self, self.keyCapture.isFirstResponder else { return }
+            self.setKeyboard(false)
+        }
+        keyRow = row
+        return row
     }
 
-    private var keyRowHost: UIViewController?
+    private var keyRow: KeyRowView?
 
     // MARK: On-screen controller
 
@@ -585,6 +582,10 @@ final class DesktopViewController: UIViewController {
                             gamepadMouse.isActive ? "on" : "off")]
         lines[0] += " · edges " + Self.describe(deferredEdges)
         lines[0] += " · on-screen controller " + (session.gamepadShown ? "shown" : "hidden")
+        if let keyRow {
+            lines[0] += " · key highlights \(keyRow.highlightCount) · key down \(keyRow.highlightedKey ?? "none")"
+            lines[0] += String(format: " · keyboard pulled %.0f", keyRow.pulledDistance)
+        }
         if let events = recordedEvents?() {
             lines.append("events \(events.count)")
             lines.append(contentsOf: events.suffix(60))

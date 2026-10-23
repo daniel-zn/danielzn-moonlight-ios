@@ -31,10 +31,64 @@ enum DemoData {
     static func simulateWake(_ host: TemporaryHost) {
         let delay = wakeDelay
         guard delay >= 0 else { return }
-        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+        queue.asyncAfter(deadline: .now() + delay) {
+            woken.insert(host.uuid)
             host.state = .online
             NotificationCenter.default.post(name: .artemisHostUpdated, object: host)
         }
+    }
+
+    /// ENCHILADA goes to sleep a moment after launch (-ArtemisDemoSleep YES).
+    static var sleepsAfterLaunch: Bool {
+        UserDefaults.standard.bool(forKey: "ArtemisDemoSleep")
+    }
+
+    /// A paired PC going to sleep, as discovery sees one (every second, through the same check
+    /// discovery's polls use): an answer only over plain HTTP, as when its HTTPS refused this
+    /// client while it went down (PairStatus 0 and the MAC hidden, as Apollo answers there),
+    /// then no answer at all, again and again. It stays that way until a wake brings it up.
+    static func simulateSleep(_ host: TemporaryHost) {
+        var poll = 0
+        func next() {
+            queue.asyncAfter(deadline: .now() + 1) {
+                // Woken (simulateWake): it answers properly again
+                if woken.contains(host.uuid) { return }
+                let answered: Bool
+                if poll % 2 == 0 {
+                    answered = DiscoveryWorker.accept(plainHttpServerInfo(of: host), for: host)
+                } else {
+                    answered = false
+                }
+                poll += 1
+                let state: State = answered ? .online : .offline
+                if host.state != state {
+                    host.state = state
+                }
+                NotificationCenter.default.post(name: .artemisHostUpdated, object: host)
+                next()
+            }
+        }
+        next()
+    }
+
+    /// Hosts a wake brought up (the sleep simulation stops for them); used on `queue` only.
+    private static var woken: Set<String> = []
+    /// The demo's stand-in for discovery's background threads.
+    private static let queue = DispatchQueue(label: "Artemis demo discovery")
+
+    /// What Apollo answers on plain HTTP: no pairing status for this client, no MAC address.
+    private static func plainHttpServerInfo(of host: TemporaryHost) -> ServerInfoResponse {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <root status_code="200"><hostname>\(host.name ?? "")</hostname><appversion>7.1.431.-1</appversion>\
+        <GfeVersion>3.23.0.74</GfeVersion><uniqueid>\(host.uuid ?? "")</uniqueid><HttpsPort>47984</HttpsPort>\
+        <ExternalPort>47989</ExternalPort><mac>00:00:00:00:00:00</mac><LocalIP>127.0.0.1</LocalIP>\
+        <PairStatus>0</PairStatus><currentgame>0</currentgame><state>SUNSHINE_SERVER_FREE</state></root>
+        """
+        let response = ServerInfoResponse()
+        response.populate(with: Data(xml.utf8))
+        response.authenticated = false
+        return response
     }
 
     static func makeHosts() -> [TemporaryHost] {
@@ -60,6 +114,8 @@ enum DemoData {
         host.uuid = uuid
         host.state = state
         host.pairState = paired ? .paired : .unpaired
+        // Pairing pins the PC's certificate
+        host.serverCert = paired ? Data("demo certificate".utf8) : nil
         host.mac = mac
         host.activeAddress = "127.0.0.1"
         host.address = "127.0.0.1"

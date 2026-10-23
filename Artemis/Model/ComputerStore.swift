@@ -90,6 +90,9 @@ final class ComputerStore {
         if isDemo {
             for host in DemoData.makeHosts() {
                 hosts[host.uuid] = host
+                if DemoData.sleepsAfterLaunch && host.name == "ENCHILADA" {
+                    DemoData.simulateSleep(host)
+                }
             }
             rebuild()
             return
@@ -149,7 +152,7 @@ final class ComputerStore {
         discovery?.startDiscovery()
 
         // Refresh the app list when a paired host is open
-        if let id = selectedHostID, let host = hosts[id], host.pairState == .paired {
+        if let id = selectedHostID, let host = hosts[id], Self.isPaired(host) {
             open(id, userInitiated: false)
         }
     }
@@ -196,8 +199,9 @@ final class ComputerStore {
             } else if attempt.deadline <= now && !isStreaming && !inBackground {
                 waking[id] = nil
                 let name = customNames[id] ?? host.name
-                alert = AlertInfo(title: "\(name) Didn't Wake Up",
-                                  message: "\(name) didn't come online within \(Int(Self.wakeTimeout)) seconds. Check that it's plugged in and that Wake-on-LAN is turned on in its BIOS and network adapter settings, then try again.",
+                logInfo("\(host.name) didn't wake up within \(Int(Self.wakeTimeout)) s")
+                alert = AlertInfo(title: "Couldn't Wake \(name)",
+                                  message: "Artemis sent the wake-up signal, but \(name) didn't come online within \(Int(Self.wakeTimeout)) seconds. Check that this iPhone is on the PC's network and that the PC is asleep, not shut down, then try again.",
                                   showsHelp: true)
             }
         }
@@ -221,10 +225,11 @@ final class ComputerStore {
                 id: host.uuid,
                 name: customNames[host.uuid] ?? host.name,
                 status: status,
-                isPaired: host.pairState == .paired,
+                isPaired: Self.isPaired(host),
                 isWaking: waking[host.uuid] != nil,
                 canWake: Self.canWake(host),
-                runningGameName: running?.name,
+                // What a PC was running before it went to sleep isn't running now
+                runningGameName: status == .online ? running?.name : nil,
                 gameCount: apps.count,
                 isNvidia: host.isNvidiaServerSoftware))
             newGames[host.uuid] = apps.map { app in
@@ -262,6 +267,13 @@ final class ComputerStore {
         return apps(of: host).first { $0.id == current }
     }
 
+    /// Paired: the PC said so over HTTPS, or it hasn't said either way yet and we have its
+    /// certificate (pinned when pairing). Only an authenticated "not paired" undoes that
+    /// (DiscoveryWorker acceptResponse:), never a PC that's asleep or out of reach.
+    private static func isPaired(_ host: TemporaryHost) -> Bool {
+        host.pairState == .paired || (host.pairState == .unknown && host.serverCert != nil)
+    }
+
     private static func canWake(_ host: TemporaryHost) -> Bool {
         guard let mac = host.mac else { return false }
         return mac != "00:00:00:00:00:00"
@@ -295,7 +307,7 @@ final class ComputerStore {
 
         // The fast path: online, paired and a cached app list. Not after a stream,
         // where serverinfo has to be fetched again for the running game.
-        if userInitiated && host.state == .online && host.pairState == .paired && host.appList.count > 0 {
+        if userInitiated && host.state == .online && Self.isPaired(host) && host.appList.count > 0 {
             showGames(id, autoLaunch: autoLaunch)
             refreshApps(host)
             return
@@ -335,7 +347,7 @@ final class ComputerStore {
                 return
             }
 
-            if host.pairState == .paired {
+            if Self.isPaired(host) {
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.busyMessage = nil
@@ -794,7 +806,7 @@ final class ComputerStore {
 
     private func openDemo(_ host: TemporaryHost, userInitiated: Bool, autoLaunch: Bool) {
         let id: String = host.uuid
-        if host.pairState == .paired {
+        if Self.isPaired(host) {
             showGames(id, autoLaunch: autoLaunch)
             // Artwork arriving while the list is open: the first arrival brings the late ones
             DemoData.lateArtArrived = false

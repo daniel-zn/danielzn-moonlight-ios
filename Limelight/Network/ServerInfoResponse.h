@@ -24,6 +24,11 @@
 
 @interface ServerInfoResponse : HttpResponse <Response>
 
+/// The answer came over HTTPS from the PC whose certificate was pinned at pairing (HttpManager
+/// sets it). A plain HTTP answer can't tell whether this client is paired: its PairStatus is
+/// always 0, and Sunshine and Apollo hide the MAC address there.
+@property (nonatomic) BOOL authenticated;
+
 - (void) populateWithData:(NSData *)data;
 - (void) populateHost:(TemporaryHost*)host;
 

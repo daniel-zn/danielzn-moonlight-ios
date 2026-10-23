@@ -20,7 +20,15 @@
 - (void) populateHost:(TemporaryHost*)host {
     host.name = [[self getStringTag:TAG_HOSTNAME] trim];
     host.uuid = [[self getStringTag:TAG_UNIQUE_ID] trim];
-    host.mac = [[self getStringTag:TAG_MAC_ADDRESS] trim];
+    // Sunshine and Apollo send 00:00:00:00:00:00 to a client they don't take as paired (any
+    // plain HTTP request): keep the MAC address we know, which Wake-on-LAN needs
+    NSString* mac = [[self getStringTag:TAG_MAC_ADDRESS] trim];
+    if (mac.length > 0 && ![mac isEqualToString:@"00:00:00:00:00:00"]) {
+        host.mac = mac;
+    }
+    else if (host.mac == nil) {
+        host.mac = mac;
+    }
     host.currentGame = [[self getStringTag:TAG_CURRENT_GAME] trim];
     
     NSInteger httpsPort;

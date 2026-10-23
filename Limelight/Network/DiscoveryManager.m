@@ -286,7 +286,9 @@
             existingHost.externalAddress = host.externalAddress;
         }
         existingHost.activeAddress = host.activeAddress;
-        if (existingHost.state != host.state) {
+        // mDNS polls over plain HTTP, which a paired PC's own poll doesn't take as an answer
+        // (DiscoveryWorker acceptResponse:): it brings that PC's state itself
+        if (existingHost.serverCert == nil && existingHost.state != host.state) {
             existingHost.state = host.state;
             [[NSNotificationCenter defaultCenter] postNotificationName:ArtemisHostUpdatedNotification object:existingHost];
         }

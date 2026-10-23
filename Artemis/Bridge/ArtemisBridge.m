@@ -10,6 +10,7 @@
 #import "HttpRequest.h"
 #import "HttpResponse.h"
 #import "ServerInfoResponse.h"
+#import "DiscoveryWorker.h"
 #import "AppListResponse.h"
 #import "ConnectionHelper.h"
 #import "DataManager.h"
@@ -40,7 +41,11 @@
         return serverInfoResp.statusMessage ?: @"The PC didn't answer.";
     }
 
-    [serverInfoResp populateHost:host];
+    // The rule discovery's polls follow: a paired PC that answers only without authenticating
+    // isn't taken as unpaired (or as up) until it has refused for a while
+    if (![DiscoveryWorker acceptResponse:serverInfoResp forHost:host]) {
+        return [NSString stringWithFormat:@"%@ didn't accept a secure connection from this iPhone. If it's just waking up or going to sleep, try again in a moment.", host.name];
+    }
     return nil;
 }
 
@@ -124,7 +129,8 @@
         ServerInfoResponse* serverInfoResp = [[ServerInfoResponse alloc] init];
         [hMan executeRequestSynchronously:[HttpRequest requestForResponse:serverInfoResp withUrlRequest:[hMan newServerInfoRequest:false]
                                                             fallbackError:401 fallbackRequest:[hMan newHttpServerInfoRequest]]];
-        if (![serverInfoResp isStatusOk] || [[serverInfoResp getStringTag:@"state"] hasSuffix:@"_SERVER_BUSY"]) {
+        if (![serverInfoResp isStatusOk] || [[serverInfoResp getStringTag:@"state"] hasSuffix:@"_SERVER_BUSY"] ||
+            [DiscoveryWorker isRefusal:serverInfoResp forHost:host]) {
             // On newer GFE versions, the quit request succeeds even though the app doesn't
             // really quit if another client tries to kill your app. We'll patch the response
             // to look like the old error in that case, so the UI behaves.

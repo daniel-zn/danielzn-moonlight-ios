@@ -88,6 +88,7 @@ static const float POLL_RATE = 2.0f; // Poll every 2 seconds
 
 - (void) discoverHost {
     BOOL receivedResponse = NO;
+    BOOL refused = NO;
     State oldState = _host.state;
     PairState oldPairState = _host.pairState;
     NSString* oldName = _host.name;
@@ -108,11 +109,14 @@ static const float POLL_RATE = 2.0f; // Poll every 2 seconds
             }
             
             ServerInfoResponse* serverInfoResp = [self requestInfoAtAddress:address cert:_host.serverCert];
-            receivedResponse = [self checkResponse:serverInfoResp];
+            NSString* previousAddress = _host.activeAddress;
+            _host.activeAddress = address;
+            receivedResponse = [DiscoveryWorker acceptResponse:serverInfoResp forHost:_host];
+            if (!receivedResponse) {
+                _host.activeAddress = previousAddress;
+                refused |= [DiscoveryWorker isRefusal:serverInfoResp forHost:_host];
+            }
             if (receivedResponse) {
-                _host.activeAddress = address;
-                [serverInfoResp populateHost:_host];
-                
                 // Update the database using the response
                 DataManager *dataManager = [[DataManager alloc] init];
                 [dataManager updateHost:_host];
@@ -126,7 +130,7 @@ static const float POLL_RATE = 2.0f; // Poll every 2 seconds
         }
     }
 
-    _host.state = receivedResponse ? StateOnline : StateOffline;
+    [DiscoveryWorker finishPollOfHost:_host answered:receivedResponse refused:refused];
     
     // Tell the UI, which otherwise only hears about new hosts
     if (_host.state != oldState || _host.pairState != oldPairState ||
@@ -148,16 +152,48 @@ static const float POLL_RATE = 2.0f; // Poll every 2 seconds
     return response;
 }
 
-- (BOOL) checkResponse:(ServerInfoResponse*)response {
++ (NSTimeInterval) refusalGrace {
+    return 30;
+}
+
++ (BOOL) isRefusal:(ServerInfoResponse*)response forHost:(TemporaryHost*)host {
+    return [response isStatusOk] && !response.authenticated && host.serverCert != nil &&
+        (host.uuid == nil || [[response getStringTag:TAG_UNIQUE_ID] isEqualToString:host.uuid]);
+}
+
++ (BOOL) acceptResponse:(ServerInfoResponse*)response forHost:(TemporaryHost*)host {
     if ([response isStatusOk]) {
         // If the response is from a different host then do not update this host
-        if ((_host.uuid == nil || [[response getStringTag:TAG_UNIQUE_ID] isEqualToString:_host.uuid])) {
+        if ((host.uuid == nil || [[response getStringTag:TAG_UNIQUE_ID] isEqualToString:host.uuid])) {
+            if ([self isRefusal:response forHost:host]) {
+                NSDate* since = host.refusedSince;
+                if (since == nil) {
+                    host.refusedSince = since = [NSDate date];
+                }
+                NSTimeInterval refusing = -[since timeIntervalSinceNow];
+                if (refusing < [self refusalGrace]) {
+                    Log(LOG_I, @"%@ answered only without authenticating (for %.0f s): not taken as unpaired or online", host.name, refusing);
+                    return NO;
+                }
+                Log(LOG_W, @"%@ has refused this client for %.0f s: it no longer knows it", host.name, refusing);
+            }
+            else if (response.authenticated) {
+                host.refusedSince = nil;
+            }
+            [response populateHost:host];
             return YES;
         } else {
-            Log(LOG_I, @"Received response from incorrect host: %@ expected: %@", [response getStringTag:TAG_UNIQUE_ID], _host.uuid);
+            Log(LOG_I, @"Received response from incorrect host: %@ expected: %@", [response getStringTag:TAG_UNIQUE_ID], host.uuid);
         }
     }
     return NO;
+}
+
++ (void) finishPollOfHost:(TemporaryHost*)host answered:(BOOL)answered refused:(BOOL)refused {
+    if (!answered && !refused) {
+        host.refusedSince = nil;
+    }
+    host.state = answered ? StateOnline : StateOffline;
 }
 
 @end

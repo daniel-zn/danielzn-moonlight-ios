@@ -8,6 +8,8 @@
 #import "TemporaryApp.h"
 #import "TemporarySettings.h"
 #import "DiscoveryManager.h"
+#import "DiscoveryWorker.h"
+#import "ServerInfoResponse.h"
 #import "PairManager.h"
 #import "HttpManager.h"
 #import "AppAssetManager.h"

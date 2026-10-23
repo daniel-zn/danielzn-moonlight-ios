@@ -65,6 +65,15 @@ trackpad (above the home indicator).
 The iOS keyboard, with a key row above it that sends real key events (`LiSendKeyboardEvent`):
 
 - Esc, Tab, Ctrl, Alt, Win, Shift, the arrows, Del, Home, End, Page Up / Down, and a second page with F1–F12.
+  Fn (Back on the second page) stays at the left end; the other keys scroll sideways under it.
+- A key lights up and fires only on a tap: a finger that lands on a key and swipes the row sideways scrolls it,
+  and that key neither lights up nor sends anything (the row's scroll view delays and cancels the key's touch,
+  as UIKit's own scroll views do; `DesktopTests/testKeyRowScrolls`).
+- No close button: swipe down on the key row to close the keyboard. It follows the finger (UIKit's interactive
+  keyboard dismissal) and closes when let go after a pull down, or on a quick flick; pulled back up before
+  letting go, it stays open (`DesktopTests/testSwipeDownClosesKeyboard`, upright and in landscape). The control
+  bar's keyboard button and the three-finger tap open and close it too. A swipe on the iOS keyboard's own keys
+  can't close it: iOS draws that keyboard in another process, so the app never sees those touches.
 - Ctrl, Alt, Win and Shift are sticky: tap = held for the next key or click (then released), double tap = locked
   until tapped again. A typed letter with Ctrl held sends Ctrl+letter; a click with a modifier held sends e.g.
   Ctrl+click.

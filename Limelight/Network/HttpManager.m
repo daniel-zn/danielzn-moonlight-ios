@@ -149,6 +149,12 @@
     
     if (!respError && request.response) {
         [request.response populateWithData:requestResp];
+        if ([(NSObject*)request.response isKindOfClass:[ServerInfoResponse class]]) {
+            // HTTPS here means our pinned certificate matched (the session delegate checks it);
+            // a fallback request below sets this again for its plain HTTP answer
+            ((ServerInfoResponse*)request.response).authenticated =
+                _serverCert != nil && [request.request.URL.scheme isEqualToString:@"https"];
+        }
         
         // If the fallback error code was detected, issue the fallback request
         if (request.response.statusCode == request.fallbackError && request.fallbackRequest != NULL) {

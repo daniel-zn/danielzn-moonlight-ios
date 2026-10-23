@@ -19,6 +19,10 @@
 @property (atomic) BOOL isNvidiaServerSoftware;
 
 @property (atomic, nullable, retain) NSData *serverCert;
+/// Since when the PC has answered only without authenticating (its HTTPS refused this client or
+/// showed another certificate) in every poll; nil when it last answered properly or not at all.
+/// Not saved.
+@property (atomic, nullable, retain) NSDate *refusedSince;
 @property (atomic, nullable, retain) NSString *address;
 @property (atomic, nullable, retain) NSString *externalAddress;
 @property (atomic, nullable, retain) NSString *localAddress;
