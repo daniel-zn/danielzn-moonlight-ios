@@ -1,26 +1,92 @@
 {
-  "fill" : {
-    "solid" : "srgb:0.04706,0.17647,0.35294,1.00000"
-  },
-  "groups" : [
+  "fill-specializations": [
     {
-      "layers" : [
-        {
-          "glass" : false,
-          "hidden" : false,
-          "image-name" : "artemis.png",
-          "name" : "Artemis"
-        }
-      ],
-      "lighting" : "combined",
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "specular" : true
+      "value": {
+        "solid": "srgb:0.04706,0.17647,0.35294,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "srgb:0.02353,0.09020,0.18824,1.00000"
+      }
     }
   ],
-  "supported-platforms" : {
-    "squares" : "shared"
+  "groups": [
+    {
+      "name": "Gold",
+      "layers": [
+        {
+          "name": "Gold linework",
+          "glass": false,
+          "image-name-specializations": [
+            {
+              "value": "gold.png"
+            },
+            {
+              "appearance": "tinted",
+              "value": "gold-mono.png"
+            }
+          ]
+        }
+      ],
+      "lighting": "combined",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.25
+      }
+    },
+    {
+      "name": "Figure",
+      "layers": [
+        {
+          "name": "Skin and handheld",
+          "glass": true,
+          "image-name-specializations": [
+            {
+              "value": "figure.png"
+            },
+            {
+              "appearance": "tinted",
+              "value": "figure-mono.png"
+            }
+          ]
+        }
+      ],
+      "lighting": "individual",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      }
+    },
+    {
+      "name": "Hair",
+      "layers": [
+        {
+          "name": "Hair and dress",
+          "glass": true,
+          "image-name-specializations": [
+            {
+              "value": "back.png"
+            },
+            {
+              "appearance": "tinted",
+              "value": "back-mono.png"
+            }
+          ]
+        }
+      ],
+      "lighting": "individual",
+      "specular": true,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
   }
 }
