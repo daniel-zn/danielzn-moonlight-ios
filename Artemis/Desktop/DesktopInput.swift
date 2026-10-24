@@ -89,7 +89,7 @@ protocol DesktopInput: AnyObject {
 }
 
 /// A gamepad's state as Moonlight sends it: button flags, triggers 0–255, sticks
-/// −32767…32767 with up positive.
+/// −32768…32767 with up positive.
 @objc(ArtemisGamepadState)
 final class GamepadState: NSObject {
     let buttons: UInt32

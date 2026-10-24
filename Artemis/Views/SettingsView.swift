@@ -149,7 +149,7 @@ struct SettingsPage: View {
     @State private var customResolutionNote = false
     @AppStorage(AppPreferences.Keys.gamepadMouse) private var gamepadMouse = true
     @AppStorage(AppPreferences.Keys.onScreenGamepadSize) private var onScreenGamepadSize = PadLayout.defaultSize
-    @AppStorage(AppPreferences.Keys.onScreenGamepadOpacity) private var onScreenGamepadOpacity = 0.85
+    @AppStorage(AppPreferences.Keys.onScreenGamepadOpacity) private var onScreenGamepadOpacity = 0.75
     @AppStorage(AppPreferences.Keys.swapMouseButtons) private var swapMouseButtons = false
     @AppStorage(AppPreferences.Keys.quitAppAfterSession) private var quitAppAfterSession = false
 

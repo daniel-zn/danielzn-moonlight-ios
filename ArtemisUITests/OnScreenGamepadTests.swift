@@ -4,7 +4,7 @@
 //
 //  The connected screen's layout and the on-screen controller (docs/TOUCH.md) against the
 //  demo desktop, which records what would go to the PC: "gamepad connect", then each state as
-//  "gamepad <buttons> lt <0–255> rt <0–255> ls <x> <y> rs <x> <y>" (sticks −32767…32767, up
+//  "gamepad <buttons> lt <0–255> rt <0–255> ls <x> <y> rs <x> <y>" (sticks −32768…32767, up
 //  positive), and "gamepad disconnect".
 //
 
@@ -130,13 +130,13 @@ final class OnScreenGamepadTests: XCTestCase {
         }
     }
 
-    /// The layout, upright and in landscape at Small and Large: two columns at the screen's sides
+    /// The layout, upright and in landscape at Small, Medium and Large: two columns at the screen's sides
     /// (the left stick over the D-pad, A B X Y over the right stick, each pair on one centre line),
     /// the shoulders above them with the stick clicks outside, Select / Xbox / Start in a row at the
     /// bottom centre.
     func testGamepadLayout() {
         for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
-            for (size, sizeName) in [(0.8, "Small"), (1.0, "Large")] {
+            for (size, sizeName) in [(0.8, "Small"), (0.9, "Medium"), (1.0, "Large")] {
                 let tag = "\(appearance)-\(name)-\(sizeName)-layout"
                 let (app, desktop) = connect(orientation: orientation, extra: ["-ArtemisGamepadSize", "\(size)"])
                 app.buttons["bar.gamepad"].tap()
@@ -216,16 +216,50 @@ final class OnScreenGamepadTests: XCTestCase {
             XCTAssertLessThanOrEqual(guide.maxY, window.maxY - 20, "\(tag): the row is over the home indicator (\(guide))")
         }
 
-        // On screen, nothing overlapping
-        let all = [("leftStick", leftStick), ("dpad", dpad), ("rightStick", rightStick), ("ABXY", face), ("Select", select),
-                   ("Guide", guide), ("Start", start), ("LT", lt), ("LB", lb), ("RB", rb), ("RT", rt), ("L3", l3), ("R3", r3)]
-        for (index, (id, frame)) in all.enumerated() {
-            XCTAssertTrue(window.contains(frame), "\(tag): \(id) off screen (\(frame))")
-            if portrait {
-                XCTAssertGreaterThan(frame.minY, desktop.frame.maxY - 1, "\(tag): \(id) over the desktop")
+        // Every control on its own, inside the safe area (and in landscape over the desktop's
+        // picture, not out on the black bars beside it), at least 4 points from every other
+        let status = self.status(desktop)
+        func numbers(_ key: String) -> [CGFloat] {
+            guard let range = status.range(of: key + #" [-0-9. ]+"#, options: .regularExpression) else { return [] }
+            return status[range].dropFirst(key.count).split(separator: " ").compactMap { Double($0) }.map { CGFloat($0) }
+        }
+        let insets = numbers("safe")  // top left bottom right
+        XCTAssertEqual(insets.count, 4, "\(tag): no safe area in \(status)")
+        var allowed = insets.count == 4
+            ? CGRect(x: window.minX + insets[1], y: window.minY + insets[0], width: window.width - insets[1] - insets[3],
+                     height: window.height - insets[0] - insets[2])
+            : window
+        if !portrait {
+            let picture = numbers("picture")
+            XCTAssertEqual(picture.count, 4, "\(tag): no picture in \(status)")
+            if picture.count == 4 { allowed = allowed.intersection(CGRect(x: picture[0], y: picture[1], width: picture[2], height: picture[3])) }
+        }
+        let ids = ["leftStick", "dpad", "rightStick", "A", "B", "X", "Y", "Select", "Guide", "Start", "LT", "LB", "RB", "RT", "L3", "R3"]
+        let round: Set<String> = ["leftStick", "rightStick", "A", "B", "X", "Y", "Guide", "L3", "R3"]
+        let all = ids.map { ($0, pad($0)) }
+        /// The gap between two controls' shapes (circles for the round ones), negative if they overlap.
+        func gap(_ a: (String, CGRect), _ b: (String, CGRect)) -> CGFloat {
+            func rectGap(_ r: CGRect, _ p: CGPoint) -> CGFloat {
+                hypot(max(r.minX - p.x, 0, p.x - r.maxX), max(r.minY - p.y, 0, p.y - r.maxY))
             }
-            for (otherID, other) in all.dropFirst(index + 1) {
-                XCTAssertFalse(frame.insetBy(dx: 1, dy: 1).intersects(other), "\(tag): \(id) overlaps \(otherID)")
+            let (ra, rb) = (round.contains(a.0), round.contains(b.0))
+            let ca = CGPoint(x: a.1.midX, y: a.1.midY), cb = CGPoint(x: b.1.midX, y: b.1.midY)
+            switch (ra, rb) {
+            case (true, true): return hypot(ca.x - cb.x, ca.y - cb.y) - a.1.width / 2 - b.1.width / 2
+            case (true, false): return rectGap(b.1, ca) - a.1.width / 2
+            case (false, true): return rectGap(a.1, cb) - b.1.width / 2
+            case (false, false):
+                return max(max(a.1.minX - b.1.maxX, b.1.minX - a.1.maxX), max(a.1.minY - b.1.maxY, b.1.minY - a.1.maxY))
+            }
+        }
+        for (index, control) in all.enumerated() {
+            XCTAssertTrue(allowed.insetBy(dx: -0.5, dy: -0.5).contains(control.1),
+                          "\(tag): \(control.0) \(control.1) outside the safe area / picture \(allowed)")
+            if portrait {
+                XCTAssertGreaterThan(control.1.minY, desktop.frame.maxY - 1, "\(tag): \(control.0) over the desktop")
+            }
+            for other in all.dropFirst(index + 1) {
+                XCTAssertGreaterThanOrEqual(gap(control, other), 4, "\(tag): \(control.0) \(control.1) and \(other.0) \(other.1) closer than 4 points")
             }
         }
         if !portrait {

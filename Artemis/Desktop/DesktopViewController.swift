@@ -215,9 +215,12 @@ final class DesktopViewController: UIViewController {
             trackpadArea.isHidden = true
             gamepad.frame = bounds
             gamepad.isHidden = !session.gamepadShown
-            // Inside the safe area, a thumb's margin from the sides (more where there's no notch)
-            // and clear of the home indicator
-            let left = max(insets.left + 8, 16), right = max(insets.right + 8, 16)
+            // Inside the safe area and over the desktop's picture (not out on the black bars beside
+            // it), a thumb's margin from the sides (more where there's no notch) and clear of the
+            // home indicator
+            let picture = videoRect(in: bounds.size)
+            let left = max(insets.left + 8, picture.minX + 8, 16)
+            let right = max(insets.right + 8, bounds.width - picture.maxX + 8, 16)
             let top = max(insets.top, 10), bottom = max(insets.bottom, 10)
             let area = CGRect(x: left, y: top, width: bounds.width - left - right, height: bounds.height - top - bottom)
             gamepad.layout(area: area, overDesktop: true, scale: padSize, opacity: AppPreferences.onScreenGamepadOpacity)
@@ -439,7 +442,7 @@ final class DesktopViewController: UIViewController {
 
     @objc private func keyboardChanged(_ notification: Notification) {
         let shown = keyCapture.isFirstResponder
-        // Closed by a swipe down on the key row: hardware keyboards type into the desktop again
+        // Closed with the key row's hide button: hardware keyboards type into the desktop again
         if !shown && notification.name == UIResponder.keyboardDidHideNotification && view.window != nil && !contentView.isFirstResponder {
             contentView.becomeFirstResponder()
         }
@@ -453,10 +456,7 @@ final class DesktopViewController: UIViewController {
     private func makeKeyRow() -> UIView {
         let row = KeyRowView(session: session)
         row.onHighlightChange = { [weak self] in self?.updateAccessibilityValue() }
-        row.onFlickDown = { [weak self] in
-            guard let self, self.keyCapture.isFirstResponder else { return }
-            self.setKeyboard(false)
-        }
+        row.onHide = { [weak self] in self?.setKeyboard(false) }
         keyRow = row
         return row
     }
@@ -582,9 +582,12 @@ final class DesktopViewController: UIViewController {
                             gamepadMouse.isActive ? "on" : "off")]
         lines[0] += " · edges " + Self.describe(deferredEdges)
         lines[0] += " · on-screen controller " + (session.gamepadShown ? "shown" : "hidden")
+        let safe = view.safeAreaInsets
+        lines[0] += String(format: " · safe %.1f %.1f %.1f %.1f", safe.top, safe.left, safe.bottom, safe.right)
+        let picture = videoRect(in: view.bounds.size)
+        lines[0] += String(format: " · picture %.1f %.1f %.1f %.1f", picture.minX, picture.minY, picture.width, picture.height)
         if let keyRow {
             lines[0] += " · key highlights \(keyRow.highlightCount) · key down \(keyRow.highlightedKey ?? "none")"
-            lines[0] += String(format: " · keyboard pulled %.0f", keyRow.pulledDistance)
         }
         if let events = recordedEvents?() {
             lines.append("events \(events.count)")

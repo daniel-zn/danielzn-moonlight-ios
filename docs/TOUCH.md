@@ -65,15 +65,18 @@ trackpad (above the home indicator).
 The iOS keyboard, with a key row above it that sends real key events (`LiSendKeyboardEvent`):
 
 - Esc, Tab, Ctrl, Alt, Win, Shift, the arrows, Del, Home, End, Page Up / Down, and a second page with F1–F12.
-  Fn (Back on the second page) stays at the left end; the other keys scroll sideways under it.
+  Fn (Back on the second page) is the first key in the row and scrolls sideways with the others
+  (`DesktopTests/testKeyRowScrolls`).
 - A key lights up and fires only on a tap: a finger that lands on a key and swipes the row sideways scrolls it,
   and that key neither lights up nor sends anything (the row's scroll view delays and cancels the key's touch,
   as UIKit's own scroll views do; `DesktopTests/testKeyRowScrolls`).
-- No close button: swipe down on the key row to close the keyboard. It follows the finger (UIKit's interactive
-  keyboard dismissal) and closes when let go after a pull down, or on a quick flick; pulled back up before
-  letting go, it stays open (`DesktopTests/testSwipeDownClosesKeyboard`, upright and in landscape). The control
-  bar's keyboard button and the three-finger tap open and close it too. A swipe on the iOS keyboard's own keys
-  can't close it: iOS draws that keyboard in another process, so the app never sees those touches.
+- The hide-keyboard button (`keyboard.chevron.compact.down`) stays at the right end of the row on its own glass.
+  The keys scroll on underneath it, fading out from just before it to its middle (a gradient mask on the row's
+  scroll view, which runs the full width), and the row ends far enough to its left that the last key scrolls fully
+  into view beside it. A swipe down on the row does nothing (`DesktopTests/testHideButtonClosesKeyboard`, upright
+  and in landscape: the keys reach under the button, the last one ends beside it, the button stays put, a swipe
+  down leaves the keyboard up, the button closes it and nothing else moves). The control bar's keyboard button and
+  the three-finger tap open and close it too.
 - Ctrl, Alt, Win and Shift are sticky: tap = held for the next key or click (then released), double tap = locked
   until tapped again. A typed letter with Ctrl held sends Ctrl+letter; a click with a modifier held sends e.g.
   Ctrl+click.
@@ -135,21 +138,26 @@ Clipboard and checks both are key events (Shift+P, A, 5, 5, W, O, R, D, Shift+1)
 The control bar's controller button (`gamecontroller`) shows an Xbox-style controller of Liquid Glass buttons; the
 PC sees an Xbox controller (`Artemis/Desktop/OnScreenGamepad.swift`, adapted from RetroPlay's pad).
 
-- One layout for both orientations (`PadLayout.controls(in:scale:)`): a column at each side of its area, the left
+- One layout for both orientations (`PadLayout.controls(in:scale:phoneWidth:)`): a column at each side of its area, the left
   stick over the D-pad and A B X Y over the right stick (each pair on one centre line); L3 LT LB at the top left
   corner and RB RT R3 at the top right; Select / Xbox / Start in a row at the bottom centre. **Portrait:** the area
   is the trackpad's place, between the desktop and the control bar, and the row sits under the columns, just above
   the bar. **Landscape:** it lies over the desktop, see-through, inside the safe area (8 points in from the
-  notch's inset, at least 16 from the edge, clear of the home indicator), with the row between the columns.
+  notch's inset and from the desktop picture's sides, so nothing hangs out over the black bars beside it, at least 16
+  from the edge, clear of the home indicator), with the row between the columns.
 - Controls: left and right sticks, D-pad (eight ways), A B X Y, LB RB, LT RT (fully pulled while held), Select (the
   Xbox controller's Back / View), Start (its Start / Menu), the Xbox (Guide) button, and L3 / R3 (the stick clicks).
-- The sticks and the D-pad are RetroPlay's PSP pad's (look, sizes and touch handling; `PadHitTesting.swift` is its
-  geometry): a stick of 122 points at full size, its knob 46 % of it and moving 30 % of it; the stick's centre is
-  zero and the knob goes where the thumb is (it doesn't float to where the thumb lands), full tilt at 22.5 % of its
-  size from the centre (three quarters of the knob's travel), an 8 % dead zone taken out smoothly, full tilt held
-  past the rim, back to the centre when the thumb lifts. The D-pad (144 points): eight ways, a dead middle of 12 %
-  of its size, diagonals where the weaker axis is at least 42 % of the stronger, a thumb slides between directions.
-  Upright on the plain background they're dark tinted glass (RetroPlay's PSP colours); over the desktop, clear glass.
+- The sticks and the D-pad are RetroPlay's PSP pad's: the same touch code (`PadTouch.swift` is RetroPlay's
+  `PadTouchView` line for line with a second stick; `PadHitTesting.swift` is its geometry file as it is), drawing,
+  sizes and colours (see "Sticks and D-pad: the same as RetroPlay's" below). A stick of 122 points × RetroPlay's
+  scale for the phone, its knob 46 % of it and moving 30 % of it; the stick's centre is zero and the knob goes where
+  the thumb is (it doesn't float to where the thumb lands), full tilt at 22.5 % of its size from the centre (three
+  quarters of the knob's travel), an 8 % dead zone taken out smoothly, clamped to the unit circle, full tilt held
+  past the rim, back to the centre when the thumb lifts. The D-pad (144 points × the scale): eight ways, a dead
+  middle of 12 % of its size, diagonals where the weaker axis is at least 42 % of the stronger, a thumb slides
+  between directions. Upright on the plain background they're dark tinted glass (RetroPlay's PSP colours); over the
+  desktop, clear glass. Each control's glass is drawn on its own (no shared container), so a stick's knob is a
+  separate glass disc with its shadow over the well.
 - Touch: several fingers at once (a stick, a trigger and a face button); a thumb slides between face buttons and
   holds both in the gap; a slightly missed tap goes to the nearest control (14 points); a stick or D-pad touch keeps
   steering off its edge. Light haptic on each new press of a button or D-pad direction (the sticks don't tick).
@@ -167,14 +175,47 @@ PC sees an Xbox controller (`Artemis/Desktop/OnScreenGamepad.swift`, adapted fro
   state, sent as soon as it shows (`LiSendMultiControllerEvent`, at rest). Hiding it, disconnecting or leaving the
   session sends it at rest, then without its bit in the mask, so the PC removes it. Fingers lifting with the app
   going away release everything.
-- Settings › Controllers › On-Screen Controller: Size (Small / Medium / Large: 80 / 90 / 100 % of the full size,
-  smaller still where the space is too small: on an iPhone SE upright Large is about 83 %) and Opacity (30–100 %,
-  85 % by default), both orientations.
+- Settings › Controllers › On-Screen Controller: Size (Small / Medium / Large: 80 / 90 / 100 % of RetroPlay's size
+  for the phone, Large by default, smaller still where the space is too small: on an iPhone SE upright Large is about
+  83 % of the design size) and Opacity (30–100 %, 75 % by default, as RetroPlay's pad), both orientations.
 - Tests: `OnScreenGamepadTests` (the demo desktop records `gamepad connect`, `gamepad <buttons> lt rt ls x y rs x y`,
   `gamepad disconnect`): A, RT, Xbox, Start, Select, L3, R3, D-pad, both sticks, A + LT + a stick at once, shown and
   hidden in portrait and landscape, large text; `testGamepadLayout` checks the layout upright and in landscape at
-  Small and Large (columns on one centre line within 1 point and at the sides, the shoulders above them with the
-  stick clicks outside, the row centred at the bottom, nothing overlapping or off screen).
+  Small, Medium and Large (columns on one centre line within 1 point and at the sides, the shoulders above them with
+  the stick clicks outside, the row centred at the bottom; every control inside the safe area, in landscape over the
+  desktop's picture too, and at least 4 points from every other, measured between their real shapes).
+
+### Sticks and D-pad: the same as RetroPlay's
+
+RetroPlay's PSP pad (`RetroPlayApp/Controls/PadTouchSurface.swift`, `PadControls.swift` `PadStick` / `PadDPad`,
+`ConsolePad.swift` `.psp`, `RetroPlayCore/Play/PadHitTesting.swift`) against Artemis's as of 1.0 (1276), and what
+changed (2026-10-23):
+
+| | RetroPlay PSP | Artemis 1.0 (1276) | Now |
+|---|---|---|---|
+| Origin | Fixed: the stick's centre is zero, the knob goes where the thumb is (`TouchStick`) | Same | Same code |
+| Travel for full tilt | 22.5 % of the stick's size (`touchTravelFraction` = 0.30 × 0.75) | Same | Same code |
+| Dead zone, curve | 8 % of the travel, rescaled away linearly (`analogUnit`); clamped to the unit circle | Same | Same code |
+| Past the rim / off the graphic | Full tilt toward the thumb; the touch keeps steering until it lifts | Same | Same code |
+| Hit area | Circle + 14 pt reach; under the finger first, else the nearest control | Same | Same code |
+| Multi-touch | Each finger owns the control it landed on; a stick reads its own finger | Same | Same code |
+| D-pad | 12 % dead middle, diagonals at 42 %, the finger keeps steering it | Same | Same code |
+| Haptics | Light tick (0.7) on a new button / D-pad press, none for the stick | Same | Same code |
+| Value carried | `Float` (rounded from `TouchStick`'s `Double`) | `CGFloat` (not rounded) | `Float`, bit for bit |
+| Knob look | 46 % of the stick, moving 30 %, its own glass + a 0.45 shadow over the well's glass | Same sizes, but every control in one `GlassEffectContainer`: the knob's glass melted into the well's | Each control's glass on its own |
+| Size on screen | 122 pt × the phone's scale (iPhone 17 Pro: × 1.088 ≈ 133 pt stick, 157 pt D-pad) | 122 pt × 90 % (Medium, the default) ≈ 110 pt, D-pad ≈ 130 pt | RetroPlay's scale × Large by default; less only where it doesn't fit (iPhone 17 Pro: ≈ 124 pt upright, under the desktop; ≈ 127 pt in landscape, kept clear of the home indicator) |
+| Opacity | 75 % by default | 85 % by default | 75 % by default |
+| To the game / PC | −1…1 to PPSSPP | × 32767 (−1 → −32767) | Xbox range: −1 → −32768, 1 → 32767 (`PadHeld.xboxAxis`) |
+| Layout | PSP: D-pad above the stick, one stick | Xbox: left stick above the D-pad, a second stick under A B X Y | Kept (an Xbox controller) |
+
+`Scripts/pad-parity/run.sh` (with `RETROPLAY=<its repository>`) proves it: it checks `PadHitTesting.swift` is still
+RetroPlay's, builds RetroPlay's own `PadTouchSurface.swift` and Artemis's `PadTouch.swift` into one Mac Catalyst tool,
+plays the same touch traces on both (from the centre and off it, a slow drag past the rim, a flick to the edge,
+sliding off the stick and back, landing just outside the well, out of reach, a spiral, stick + D-pad + button at
+once, a tap on every point of a 6 pt grid over and around the D-pad, a sweep around it) at four stick sizes
+(about 10 000 steps) and fails on any difference in x, y or the buttons at any step; it also checks the Xbox range.
+(Two thumbs on one stick isn't compared: both apps then take whichever thumb comes first in a dictionary, which
+changes from run to run.)
 
 ## Game controllers
 

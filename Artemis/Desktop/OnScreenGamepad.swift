@@ -7,53 +7,17 @@
 //  orientations (upright in the trackpad's place, in landscape over the desktop, see-through):
 //  a column at each side (the left stick over the D-pad, A B X Y over the right stick), the
 //  shoulders above them with the stick clicks outside, Select / Xbox / Start at the bottom centre.
-//  Adapted from RetroPlay's pad (Controls/PadControls.swift, PadTouchSurface.swift; the sticks and
-//  the D-pad are its PSP pad's): SwiftUI draws the controls, one UIKit view takes every touch on
-//  them, so several fingers work at once (a stick, a trigger and a face button), a thumb slides
-//  between face buttons, and a new press ticks a haptic. Touches away from the controls fall
-//  through to the desktop.
+//  Adapted from RetroPlay's pad (Controls/PadControls.swift; the sticks and the D-pad are its PSP
+//  pad's): SwiftUI draws the controls, one UIKit view (PadTouch.swift) takes every touch on them,
+//  so several fingers work at once (a stick, a trigger and a face button), a thumb slides between
+//  face buttons, and a new press ticks a haptic. Touches away from the controls fall through to
+//  the desktop.
 //
 
 import SwiftUI
 import UIKit
 
 // MARK: - Controls and layout
-
-/// One control on the pad, with its frame in the pad's view.
-struct PadControl: Identifiable, Equatable {
-    enum Kind: Equatable {
-        /// Held while touched: Moonlight's button flags (or a trigger's bit).
-        case button(UInt32)
-        case dpad
-        case stick(left: Bool)
-    }
-
-    enum Look: Equatable {
-        case face(Color)
-        case shoulder
-        /// Select and Start.
-        case pill
-        /// L3 and R3: small and round.
-        case click
-        case guide
-        case dpad
-        case stick
-    }
-
-    let id: String
-    let title: String
-    let accessibility: String
-    let kind: Kind
-    let look: Look
-    let frame: CGRect
-
-    var isRound: Bool {
-        switch look {
-        case .face, .click, .guide, .stick: true
-        default: false
-        }
-    }
-}
 
 enum PadBits {
     static let a = UInt32(A_FLAG), b = UInt32(B_FLAG), x = UInt32(X_FLAG), y = UInt32(Y_FLAG)
@@ -80,12 +44,14 @@ enum PadLayout {
     /// Settings › Controllers › On-screen controller size: a share of the full size (Large),
     /// which shrinks further where the space is too small for it.
     static let sizes: [(name: String, scale: Double)] = [("Small", 0.8), ("Medium", 0.9), ("Large", 1)]
-    static let defaultSize = 0.9
+    /// Large: RetroPlay's PSP pad's size on this phone.
+    static let defaultSize = 1.0
 
     private static let xbox = (a: Color(red: 0.36, green: 0.72, blue: 0.26), b: Color(red: 0.86, green: 0.24, blue: 0.22),
                                x: Color(red: 0.20, green: 0.50, blue: 0.95), y: Color(red: 0.95, green: 0.74, blue: 0.10))
 
-    // The full size, in points: RetroPlay's PSP pad at Large (its stick and D-pad, its diamond's spacing)
+    // The design size, in points: RetroPlay's PSP pad at scale 1 with its full-size controls (its
+    // stick and D-pad, its diamond's spacing). RetroPlay scales it up with the phone (`pspScale`).
     static let stick: CGFloat = 122
     static let dpad: CGFloat = 144
     static let faceDiameter: CGFloat = 54
@@ -95,7 +61,7 @@ enum PadLayout {
     /// The columns' rows: the left stick beside A B X Y, the D-pad beside the right stick.
     private static let topRow = max(stick, faceSpan), bottomRow = max(dpad, stick), rowGap: CGFloat = 10
     private static let columnHeight = topRow + rowGap + bottomRow
-    private static let shoulder = CGSize(width: 64, height: 40), click: CGFloat = 40, shoulderGap: CGFloat = 6
+    private static let shoulder = CGSize(width: 64, height: 40), click: CGFloat = 40, shoulderGap: CGFloat = 8
     /// L3, LT, LB (and mirrored RB, RT, R3).
     private static let shoulderGroup = click + shoulder.width * 2 + shoulderGap * 2
     private static let pill = CGSize(width: 58, height: 30), guide: CGFloat = 44, middleGap: CGFloat = 14
@@ -106,8 +72,8 @@ enum PadLayout {
     /// The controls in `area` (upright, the trackpad's place; in landscape, the safe area). The
     /// columns go at its sides and the shoulders at its top corners; Select / Xbox / Start at its
     /// bottom centre, between the columns when it's wide, under them when it's tall.
-    static func controls(in area: CGRect, scale: Double) -> [PadControl] {
-        let unit = unit(in: area, scale: scale)
+    static func controls(in area: CGRect, scale: Double, phoneWidth: CGFloat) -> [PadControl] {
+        let unit = unit(in: area, scale: scale, phoneWidth: phoneWidth)
         let beside = isWide(area)
         func size(_ value: CGFloat) -> CGFloat { value * unit }
 
@@ -153,14 +119,14 @@ enum PadLayout {
                 PadControl(id: "Start", title: "Start", accessibility: "Start", kind: .button(PadBits.start), look: .pill, frame: start),
                 stick(left: true, round(leftX, upper, stick))]
             + face(center: CGPoint(x: rightX, y: upper), diameter: size(faceDiameter), reach: size(faceReach))
-            + [PadControl(id: "dpad", title: "", accessibility: "D-pad", kind: .dpad, look: .dpad, frame: round(leftX, lower, dpad)),
+            + [PadControl(id: "dpad", title: "", accessibility: "D-pad", kind: .dpad(up: PadBits.up, down: PadBits.down, left: PadBits.left, right: PadBits.right), look: .dpad, frame: round(leftX, lower, dpad)),
                stick(left: false, round(rightX, lower, stick))]
     }
 
     /// Where the control bar goes while the pad lies over the desktop (landscape), as a fraction
     /// of the screen: top centre between the shoulders, or under them if it doesn't fit there.
     static func barCenter(area: CGRect, bounds: CGSize, barSize: CGSize, scale: Double) -> CGPoint {
-        let unit = unit(in: area, scale: scale)
+        let unit = unit(in: area, scale: scale, phoneWidth: min(bounds.width, bounds.height))
         let between = area.width - 2 * shoulderGroup * unit
         let y = between >= barSize.width + 16
             ? area.minY + shoulder.height * unit / 2
@@ -172,11 +138,18 @@ enum PadLayout {
         area.width > area.height
     }
 
-    /// Points per design point: the full size where it fits, times the size setting.
-    private static func unit(in area: CGRect, scale: Double) -> CGFloat {
+    /// RetroPlay's PSP pad's scale on a phone this wide (upright): its thumb row, D-pad and
+    /// diamond (144 + 60 × 2.8 + a 28 pt gap) across the width less 16 pt each side
+    /// (`ConsolePadPortrait.scale`; on every iPhone the width is what limits it), 0.6…1.35.
+    static func pspScale(phoneWidth: CGFloat) -> CGFloat {
+        min(max((phoneWidth - 2 * 16) / (144 + 60 * 2.8 + 28), 0.6), 1.35)
+    }
+
+    /// Points per design point: RetroPlay's size on this phone where it fits, times the size setting.
+    private static func unit(in area: CGRect, scale: Double, phoneWidth: CGFloat) -> CGFloat {
         let width = max(2 * shoulderGroup + gap, 2 * column + (isWide(area) ? middleRow + 2 * gap : gap))
         let height = shoulder.height + gap + columnHeight + (isWide(area) ? 0 : gap + guide)
-        return max(0.4, min(area.width / width, area.height / height, 1) * min(scale, 1))
+        return max(0.4, min(area.width / width, area.height / height, pspScale(phoneWidth: phoneWidth)) * min(scale, 1))
     }
 
     private static func face(center: CGPoint, diameter: CGFloat, reach: CGFloat) -> [PadControl] {
@@ -202,21 +175,14 @@ enum PadLayout {
 
 // MARK: - State
 
-/// What the pad holds: buttons (with the trigger bits) and the sticks, −1…1 with up positive.
-struct PadHeld: Equatable {
-    var buttons: UInt32 = 0
-    var left = CGVector.zero
-    var right = CGVector.zero
-
-    static let idle = PadHeld()
-
+extension PadHeld {
     /// As Moonlight sends it.
     var gamepadState: GamepadState {
-        func axis(_ value: CGFloat) -> Int16 { Int16((min(max(value, -1), 1) * 32767).rounded()) }
-        return GamepadState(buttons: buttons & ~PadBits.triggers,
-                            leftTrigger: buttons & PadBits.leftTrigger != 0 ? 255 : 0,
-                            rightTrigger: buttons & PadBits.rightTrigger != 0 ? 255 : 0,
-                            leftX: axis(left.dx), leftY: axis(left.dy), rightX: axis(right.dx), rightY: axis(right.dy))
+        GamepadState(buttons: buttons & ~PadBits.triggers,
+                     leftTrigger: buttons & PadBits.leftTrigger != 0 ? 255 : 0,
+                     rightTrigger: buttons & PadBits.rightTrigger != 0 ? 255 : 0,
+                     leftX: Self.xboxAxis(leftX), leftY: Self.xboxAxis(leftY),
+                     rightX: Self.xboxAxis(rightX), rightY: Self.xboxAxis(rightY))
     }
 }
 
@@ -235,7 +201,7 @@ final class OnScreenGamepadModel {
     @ObservationIgnored private var pulseCount = 0
 
     func isHeld(_ bits: UInt32) -> Bool {
-        held.buttons & bits == bits
+        bits != 0 && held.buttons & bits == bits
     }
 
     func setTouched(_ state: PadHeld) {
@@ -252,7 +218,8 @@ final class OnScreenGamepadModel {
 
     /// A press for VoiceOver (and Switch Control): held for a moment.
     func pulse(buttons: UInt32 = 0, left: CGVector = .zero, right: CGVector = .zero) {
-        pulsed = PadHeld(buttons: buttons, left: left, right: right)
+        pulsed = PadHeld(buttons: buttons, leftX: Float(left.dx), leftY: Float(left.dy),
+                         rightX: Float(right.dx), rightY: Float(right.dy))
         pulseCount += 1
         let count = pulseCount
         publish()
@@ -267,8 +234,8 @@ final class OnScreenGamepadModel {
     private func publish() {
         var next = touched
         next.buttons |= pulsed.buttons
-        if pulsed.left != .zero { next.left = pulsed.left }
-        if pulsed.right != .zero { next.right = pulsed.right }
+        if pulsed.leftX != 0 || pulsed.leftY != 0 { (next.leftX, next.leftY) = (pulsed.leftX, pulsed.leftY) }
+        if pulsed.rightX != 0 || pulsed.rightY != 0 { (next.rightX, next.rightY) = (pulsed.rightX, pulsed.rightY) }
         guard next != held else { return }
         held = next
         onChange?(next)
@@ -292,7 +259,7 @@ final class OnScreenGamepadView: UIView {
         // Nothing here moves for the keyboard
         host.safeAreaRegions = []
         addSubview(host.view)
-        touchView.model = model
+        touchView.onChange = { [weak self] held in self?.model.setTouched(held) }
         addSubview(touchView)
     }
 
@@ -302,7 +269,8 @@ final class OnScreenGamepadView: UIView {
     func layout(area: CGRect, overDesktop: Bool, scale: Double, opacity: Double) {
         host.view.frame = bounds
         touchView.frame = bounds
-        let controls = PadLayout.controls(in: area, scale: scale)
+        let phone = window?.bounds.size ?? bounds.size
+        let controls = PadLayout.controls(in: area, scale: scale, phoneWidth: min(phone.width, phone.height))
         if model.controls != controls { model.controls = controls }
         if model.overDesktop != overDesktop { model.overDesktop = overDesktop }
         if model.opacity != opacity { model.opacity = opacity }
@@ -326,16 +294,14 @@ struct OnScreenGamepadDrawing: View {
     let model: OnScreenGamepadModel
 
     var body: some View {
-        // One container renders the controls' glass together (cheaper than a pass each); no
-        // spacing, so neighbouring controls don't melt into one another
-        GlassEffectContainer(spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                Color.clear
-                ForEach(model.controls) { control in
-                    PadControlView(control: control, model: model)
-                        .frame(width: control.frame.width, height: control.frame.height)
-                        .position(x: control.frame.midX, y: control.frame.midY)
-                }
+        // Each control's glass on its own, as RetroPlay's pad draws it (in one container the
+        // stick's knob and its well melted into a single shape)
+        ZStack(alignment: .topLeading) {
+            Color.clear
+            ForEach(model.controls) { control in
+                PadControlView(control: control, model: model)
+                    .frame(width: control.frame.width, height: control.frame.height)
+                    .position(x: control.frame.midX, y: control.frame.midY)
             }
         }
         .opacity(model.opacity)
@@ -452,16 +418,16 @@ private struct PadControlView: View {
     /// thumb is, clear glass over the desktop.
     private var stick: some View {
         let size = control.frame.width
-        let travel = size * PadTouchView.stickTravelFraction
+        let travel = size * PadTouchView.travelFraction
         let left = control.kind == .stick(left: true)
-        let value = left ? model.held.left : model.held.right
+        let x = CGFloat(left ? model.held.leftX : model.held.rightX), y = CGFloat(left ? model.held.leftY : model.held.rightY)
         return ZStack {
             Color.clear.glassEffect(overDesktop ? .clear : .regular.tint(PadPalette.gate.opacity(0.8)), in: .circle)
             Color.clear
                 .frame(width: size * 0.46, height: size * 0.46)
                 .glassEffect(overDesktop ? .clear : .regular.tint(PadPalette.nub.opacity(0.8)), in: .circle)
                 .shadow(color: .black.opacity(0.45), radius: 3, y: 2)
-                .offset(x: value.dx * travel, y: -value.dy * travel)
+                .offset(x: x * travel, y: -y * travel)
         }
         .frame(width: size, height: size)
         .accessibilityAddTraits(.allowsDirectInteraction)
@@ -510,225 +476,5 @@ private struct PlusShape: Shape {
         path.addRoundedRect(in: CGRect(x: rect.minX, y: rect.midY - thickness / 2, width: rect.width, height: thickness),
                             cornerSize: CGSize(width: radius, height: radius))
         return path
-    }
-}
-
-// MARK: - Touches
-
-/// Every touch on the pad (RetroPlay's PadTouchView): any number of fingers at once; a thumb
-/// slides between buttons and holds both in the gap; a D-pad or stick touch keeps steering
-/// off its edge; a slightly missed tap goes to the nearest control; a new press ticks (a
-/// button or a D-pad direction; a stick doesn't).
-final class PadTouchView: UIView {
-    weak var model: OnScreenGamepadModel?
-    var controls: [PadControl] = [] {
-        didSet { if controls != oldValue { dropLostTracks() } }
-    }
-
-    /// Reach around each control, in points.
-    private let slop: CGFloat = 14
-    /// Round buttons are hit a little outside their circle, so neighbours overlap (both held).
-    private let buttonReach: CGFloat = 1.12
-    /// How far a stick's knob moves from its centre at full tilt, as a share of its size.
-    static let stickTravelFraction: CGFloat = 0.30
-    /// How far the thumb moves for full tilt: three quarters of the knob's travel (RetroPlay's
-    /// `PadStick.touchTravelFraction`: a thumb's touch point sits a little inside where it feels
-    /// it's pressing, so at 1:1 a full push often read as 70–80 %). Past it, full tilt.
-    static let stickTouchFraction: CGFloat = stickTravelFraction * 0.75
-
-    private enum Track {
-        case buttons(UInt32)
-        case dpad(id: String, bits: UInt32)
-        case stick(id: String, left: Bool, stick: TouchStick, value: CGVector)
-    }
-
-    private var tracks: [ObjectIdentifier: Track] = [:]
-    private var lastButtons: UInt32 = 0
-    private let haptics = UIImpactFeedbackGenerator(style: .light)
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isMultipleTouchEnabled = true
-        isAccessibilityElement = false
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-    /// Only touches on (or near) a control are the pad's.
-    func claims(_ point: CGPoint) -> Bool {
-        nearest(to: point) != nil
-    }
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        haptics.prepare()
-        for touch in touches {
-            let point = touch.location(in: self)
-            guard let control = nearest(to: point) else { continue }
-            let key = ObjectIdentifier(touch)
-            switch control.kind {
-            case .button:
-                tracks[key] = .buttons(buttonBits(at: point, fallback: control))
-            case .dpad:
-                tracks[key] = .dpad(id: control.id, bits: dpadBits(control, point))
-            case .stick(let left):
-                // The stick's centre is zero, and the knob goes where the thumb is
-                let stick = TouchStick(originX: control.frame.midX, originY: control.frame.midY,
-                                       radius: min(control.frame.width, control.frame.height) * Self.stickTouchFraction)
-                tracks[key] = .stick(id: control.id, left: left, stick: stick, value: Self.value(stick, point))
-            }
-        }
-        emit()
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            let key = ObjectIdentifier(touch)
-            guard let track = tracks[key] else { continue }
-            let point = touch.location(in: self)
-            switch track {
-            case .buttons(let old):
-                // Slide between buttons; keep the press while the thumb crosses a gap
-                let bits = buttonBits(at: point, fallback: nil)
-                tracks[key] = .buttons(bits == 0 && nearButton(point) ? old : bits)
-            case .dpad(let id, _):
-                guard let control = controls.first(where: { $0.id == id }) else { continue }
-                tracks[key] = .dpad(id: id, bits: dpadBits(control, point))
-            case .stick(let id, let left, let stick, _):
-                tracks[key] = .stick(id: id, left: left, stick: stick, value: Self.value(stick, point))
-            }
-        }
-        emit()
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            tracks[ObjectIdentifier(touch)] = nil
-        }
-        emit()
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        touchesEnded(touches, with: event)
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        if window == nil { forgetTouches() }
-    }
-
-    func forgetTouches() {
-        tracks.removeAll()
-        emit()
-    }
-
-    /// −1…1 with up positive (RetroPlay's TouchStick: an 8 % dead zone, taken out smoothly).
-    private static func value(_ stick: TouchStick, _ point: CGPoint) -> CGVector {
-        let value = stick.update(x: point.x, y: point.y)
-        return CGVector(dx: value.x, dy: value.y)
-    }
-
-    // MARK: Geometry
-
-    /// Controls that went away (a new layout) let go of their touches.
-    private func dropLostTracks() {
-        for (key, track) in tracks {
-            switch track {
-            case .dpad(let id, _), .stick(let id, _, _, _):
-                if !controls.contains(where: { $0.id == id }) { tracks[key] = nil }
-            case .buttons:
-                break
-            }
-        }
-        DispatchQueue.main.async { [weak self] in self?.emit() }
-    }
-
-    private func distance(from point: CGPoint, to control: PadControl) -> CGFloat {
-        let frame = control.frame
-        if control.isRound {
-            return max(0, hypot(point.x - frame.midX, point.y - frame.midY) - min(frame.width, frame.height) / 2)
-        }
-        let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
-        let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
-        return hypot(dx, dy)
-    }
-
-    /// The control under the point, else the closest within reach.
-    private func nearest(to point: CGPoint) -> PadControl? {
-        var best: PadControl?
-        var bestDistance = CGFloat.greatestFiniteMagnitude
-        for control in controls {
-            let distance = distance(from: point, to: control)
-            if distance <= slop && distance < bestDistance {
-                best = control
-                bestDistance = distance
-                if distance == 0 { break }
-            }
-        }
-        return best
-    }
-
-    private func nearButton(_ point: CGPoint) -> Bool {
-        controls.contains { control in
-            if case .button = control.kind { return distance(from: point, to: control) <= slop }
-            return false
-        }
-    }
-
-    /// Every button whose (slightly larger) area has the point: two at once in the gap.
-    private func buttonBits(at point: CGPoint, fallback: PadControl?) -> UInt32 {
-        var bits: UInt32 = 0
-        var closest: (bits: UInt32, distance: CGFloat)?
-        for control in controls {
-            guard case .button(let buttonBits) = control.kind else { continue }
-            let frame = control.frame
-            let hit = control.isRound
-                ? hypot(point.x - frame.midX, point.y - frame.midY) <= min(frame.width, frame.height) / 2 * buttonReach
-                : frame.contains(point)
-            if hit {
-                bits |= buttonBits
-            } else {
-                let distance = distance(from: point, to: control)
-                if distance <= slop, distance < (closest?.distance ?? .greatestFiniteMagnitude) {
-                    closest = (buttonBits, distance)
-                }
-            }
-        }
-        if bits != 0 { return bits }
-        if let closest { return closest.bits }
-        if let fallback, case .button(let bits) = fallback.kind { return bits }
-        return 0
-    }
-
-    /// Eight ways around the centre, with a small dead middle (RetroPlay's D-pad).
-    private func dpadBits(_ control: PadControl, _ point: CGPoint) -> UInt32 {
-        let size = Double(min(control.frame.width, control.frame.height))
-        let directions = PadHitTesting.dpad(dx: point.x - control.frame.midX, dy: point.y - control.frame.midY,
-                                            deadzone: size * 0.12, diagonalRatio: 0.42)
-        var bits: UInt32 = 0
-        if directions.up { bits |= PadBits.up }
-        if directions.down { bits |= PadBits.down }
-        if directions.left { bits |= PadBits.left }
-        if directions.right { bits |= PadBits.right }
-        return bits
-    }
-
-    // MARK: Output
-
-    private func emit() {
-        var state = PadHeld.idle
-        for track in tracks.values {
-            switch track {
-            case .buttons(let bits), .dpad(_, let bits):
-                state.buttons |= bits
-            case .stick(_, let left, _, let value):
-                if left { state.left = value } else { state.right = value }
-            }
-        }
-        if state.buttons & ~lastButtons != 0 {
-            haptics.impactOccurred(intensity: 0.7)
-        }
-        lastButtons = state.buttons
-        model?.setTouched(state)
     }
 }

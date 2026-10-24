@@ -27,9 +27,10 @@ Changes from upstream so far:
   pairing PIN, Apps (artwork, an Active badge, Resume and Stop), and Settings in the Mac's sections.
 - Touch controls for the remote desktop (`Artemis/Desktop/`, spec in [docs/TOUCH.md](docs/TOUCH.md)): trackpad and
   direct modes, clicks, drags, two-finger scrolling, pinch to zoom, a movable Liquid Glass control bar, the keyboard
-  with a key row (Esc, Tab, sticky Ctrl/Alt/Win/Shift, arrows, F1–F12; Fn pinned while the keys scroll; swipe the
-  row down to close the keyboard) and Windows shortcuts. Upright (the desktop on
-  top, a trackpad under it) or landscape (full screen).
+  with a key row (Esc, Tab, sticky Ctrl/Alt/Win/Shift, arrows, F1–F12, scrolling sideways under a
+  hide-keyboard button) and Windows shortcuts. Upright (the desktop on top, a trackpad under it) or landscape (full
+  screen). An on-screen Xbox controller whose sticks and D-pad are RetroPlay's PSP pad's, the same code and
+  checked against it step for step (`Scripts/pad-parity/run.sh`).
 - The UI font is [Orbix](https://fontesk.com/orbix-font/) by Besign Foundry (`Artemis/Fonts/`, SIL Open Font License
   1.1, `OFL.txt`), with SF Pro for digits and the characters it lacks. It replaces the storyboards, `MainFrameViewController`, the settings screen and `SWRevealViewController`:
   their logic is in `Artemis/Model/ComputerStore.swift` and `Artemis/Bridge/ArtemisBridge.m`. The streaming core

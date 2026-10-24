@@ -91,7 +91,7 @@ final class DesktopTests: XCTestCase {
             XCTAssertEqual(frames(), before, "\(tag): the layout changed with the keyboard up")
             shot("\(tag)-2-keyboard")
 
-            // Closed with a swipe down on the key row (the bar's button may be under the keyboard now)
+            // Closed with the key row's hide button (the bar's button may be under the keyboard now)
             closeKeyboard(app)
             let gone = NSPredicate(format: "exists == false")
             XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: app.buttons["key.Esc"])], timeout: 5),
@@ -104,11 +104,13 @@ final class DesktopTests: XCTestCase {
         }
     }
 
-    /// Swiping down on the key row closes the keyboard (past a distance or with a flick; a short
-    /// slow pull springs back), upright and in landscape, and nothing else on screen moves.
-    func testSwipeDownClosesKeyboard() {
+    /// The hide-keyboard button sits at the right end of the key row on its own glass; the keys
+    /// run on under it (no cut-off to its left) and the last one still scrolls fully into view
+    /// beside it. A swipe down on the row doesn't close the keyboard; the button does, and
+    /// nothing else on screen moves. Upright and in landscape.
+    func testHideButtonClosesKeyboard() {
         for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
-            let tag = "\(appearance)-\(name)-L-keyboard-swipe"
+            let tag = "\(appearance)-\(name)-L-keyboard-hide"
             let (app, desktop) = connect(orientation: orientation)
             sleep(1)
             var watched: [(String, XCUIElement)] = [("desktop", desktop), ("bar.disconnect", app.buttons["bar.disconnect"]),
@@ -122,55 +124,67 @@ final class DesktopTests: XCTestCase {
             let before = frames()
             let count = state(desktop).count
             let gone = NSPredicate(format: "exists == false")
+            let window = app.windows.firstMatch.frame
 
-            // A long pull down from a key on the row
             openKeyboard(app, tag: tag)
-            XCTAssertFalse(app.buttons["key.hide"].exists, "\(tag): the row still has a hide button")
+            let hide = app.buttons["key.hide"]
+            XCTAssertTrue(hide.exists, "\(tag): the row has no hide button")
+            let hideFrame = hide.frame
+            XCTAssertGreaterThan(hideFrame.maxX, window.maxX - 80, "\(tag): the hide button isn't at the right end (\(hideFrame))")
+            let esc = app.buttons["key.Esc"]
+            XCTAssertEqual(esc.frame.midY, hideFrame.midY, accuracy: 1, "\(tag): the hide button isn't in the row")
+
+            // The keys run on under the button: one of them reaches under it
+            let names = ["page", "Esc", "Tab", "Ctrl", "Alt", "Win", "Shift", "Left", "Up", "Down", "Right", "Del", "Home", "End", "PgUp", "PgDn"]
+            func under() -> [String] {
+                names.filter { name in
+                    let frame = app.buttons["key.\(name)"].frame
+                    return frame.maxX > hideFrame.minX + 4 && frame.minX < hideFrame.maxX
+                }
+            }
+            XCTAssertFalse(under().isEmpty, "\(tag): no key reaches under the hide button (keys cut off to its left)")
             shot("\(tag)-1-open")
-            let tab = app.buttons["key.Tab"]
+
+            // Scrolled to the end, the last key sits whole beside the button, which hasn't moved
+            for _ in 0..<4 {
+                XCTAssertTrue(MultiTouch.timed([(CGPoint(x: window.midX + 60, y: hideFrame.midY), CGVector(dx: -260, dy: 0), 0, 0.25, 0)], testCase: self))
+            }
+            let last = settledFrame(app.buttons["key.PgDn"])
+            XCTAssertLessThanOrEqual(last.maxX, hideFrame.minX, "\(tag): the last key stays under the button (\(last), button \(hideFrame))")
+            XCTAssertGreaterThan(last.maxX, hideFrame.minX - 40, "\(tag): a gap after the last key (\(last), button \(hideFrame))")
+            XCTAssertEqual(hide.frame, hideFrame, "\(tag): the hide button moved with the keys")
+            shot("\(tag)-2-scrolled-to-end")
+
+            // A swipe down on the row leaves the keyboard up
+            let tab = app.buttons["key.Tab"].exists && app.buttons["key.Tab"].isHittable ? app.buttons["key.Tab"] : app.buttons["key.End"]
             tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 .press(forDuration: 0.05, thenDragTo: tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 220)))
-            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: app.buttons["key.Esc"])], timeout: 5),
-                           .completed, "\(tag): a swipe down on the key row didn't close the keyboard")
+            XCTAssertTrue(MultiTouch.timed([(CGPoint(x: window.midX, y: hideFrame.midY), CGVector(dx: 0, dy: 90), 0, 0.1, 0)], testCase: self))
+            sleep(2)
+            XCTAssertTrue(esc.exists, "\(tag): a swipe down on the key row closed the keyboard")
+            XCTAssertTrue(state(desktop).status.contains("keyboard on"), "\(tag): \(state(desktop).status)")
+
+            // The button closes it; nothing else moved
+            hide.tap()
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: esc)], timeout: 5),
+                           .completed, "\(tag): the hide button didn't close the keyboard")
             sleep(1)
             XCTAssertTrue(state(desktop).status.contains("keyboard off"), "\(tag): \(state(desktop).status)")
             XCTAssertEqual(frames(), before, "\(tag): the layout changed")
-            shot("\(tag)-2-closed")
-
-            // The keyboard follows the finger: pulled down, then back up before letting go, it
-            // goes down and comes back, and stays open
-            openKeyboard(app, tag: tag)
-            let row = app.buttons["key.Esc"].frame
-            XCTAssertTrue(MultiTouch.polyline([CGPoint(x: row.maxX + 30, y: row.midY), CGPoint(x: row.maxX + 30, y: row.midY + 60),
-                                               CGPoint(x: row.maxX + 30, y: row.midY - 10)], duration: 1.2, testCase: self))
-            sleep(1)
-            let pulled = pulledDistance(desktop)
-            XCTAssertGreaterThan(pulled, 15, "\(tag): the keyboard didn't follow the finger (\(state(desktop).status))")
-            XCTAssertTrue(app.buttons["key.Esc"].exists, "\(tag): a pull taken back closed the keyboard")
-            XCTAssertEqual(app.buttons["key.Esc"].frame, row, "\(tag): the row didn't come back to its place")
-
-            // A quick flick down on the row closes it too
-            XCTAssertTrue(MultiTouch.timed([(CGPoint(x: row.maxX + 30, y: row.midY), CGVector(dx: 0, dy: 70), 0, 0.1, 0)], testCase: self))
-            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: gone, object: app.buttons["key.Esc"])], timeout: 5),
-                           .completed, "\(tag): a flick down on the key row didn't close the keyboard")
-            sleep(1)
-            XCTAssertEqual(frames(), before, "\(tag): the layout changed after the flick")
-
-            // Opening and closing typed nothing
             XCTAssertEqual(events(desktop, since: count), [], "\(tag): input was sent")
+            shot("\(tag)-3-closed")
 
             // Typing still works afterwards
             openKeyboard(app, tag: tag)
             let typed = state(desktop).count
             typeKeys(app, "hi")
-            XCTAssertEqual(events(desktop, since: typed), ["key 0x48", "key 0x49"], "\(tag) typing after the swipes")
-            shot("\(tag)-3-typing")
+            XCTAssertEqual(events(desktop, since: typed), ["key 0x48", "key 0x49"], "\(tag) typing after closing")
             app.terminate()
             XCUIDevice.shared.orientation = .portrait
         }
     }
 
-    /// Fn stays at the start of the key row while the other keys scroll sideways; a finger that
+    /// Fn is the first key in the row and scrolls sideways with the other keys; a finger that
     /// lands on a key and swipes the row along neither presses nor lights up that key.
     func testKeyRowScrolls() {
         for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
@@ -185,19 +199,23 @@ final class DesktopTests: XCTestCase {
             // Swipe the row left, starting on Ctrl, quickly and slowly
             let ctrlFrame = ctrl.frame
             XCTAssertTrue(MultiTouch.timed([(CGPoint(x: ctrlFrame.midX, y: ctrlFrame.midY), CGVector(dx: -220, dy: 0), 0, 0.25, 0)], testCase: self))
-            sleep(1)
-            XCTAssertEqual(fn.frame, fnFrame, "\(tag): Fn moved with the keys")
-            XCTAssertLessThan(esc.frame.minX, escFrame.minX - 50, "\(tag): the row didn't scroll (Esc \(escFrame) → \(esc.frame))")
+            let escScrolled = settledFrame(esc)
+            XCTAssertLessThan(escScrolled.minX, escFrame.minX - 50, "\(tag): the row didn't scroll (Esc \(escFrame) → \(escScrolled))")
+            // Fn is an ordinary key at the start of the row: it scrolls away with the others
+            XCTAssertEqual(fn.frame.minX - fnFrame.minX, escScrolled.minX - escFrame.minX, accuracy: 1,
+                           "\(tag): Fn didn't scroll with the keys (Fn \(fnFrame) → \(fn.frame))")
             shot("\(tag)-1-scrolled")
             XCTAssertEqual(events(desktop, since: count), [], "\(tag): scrolling the row sent keys")
             XCTAssertEqual(highlights(desktop), lit, "\(tag): a key lit up while the row scrolled")
             XCTAssertTrue(state(desktop).status.contains("key down none"), "\(tag): \(state(desktop).status)")
             XCTAssertEqual(ctrl.value as? String ?? "", "", "\(tag): Ctrl got pressed by the swipe")
 
-            // Back, slowly this time, starting on whichever key is just right of Fn
-            XCTAssertTrue(MultiTouch.timed([(CGPoint(x: fnFrame.maxX + 50, y: fnFrame.midY), CGVector(dx: 240, dy: 0), 0, 0.9, 0)], testCase: self))
-            sleep(1)
-            XCTAssertEqual(fn.frame, fnFrame, "\(tag): Fn moved with the keys")
+            // Back, slowly this time (twice, to get all the way), starting on whichever key is just
+            // right of where Fn was
+            for _ in 0..<2 {
+                XCTAssertTrue(MultiTouch.timed([(CGPoint(x: fnFrame.maxX + 50, y: fnFrame.midY), CGVector(dx: 240, dy: 0), 0, 0.9, 0)], testCase: self))
+            }
+            XCTAssertEqual(settledFrame(fn), fnFrame, "\(tag): Fn isn't back at the start of the row")
             XCTAssertEqual(events(desktop, since: count), [], "\(tag): scrolling the row back sent keys")
             XCTAssertEqual(highlights(desktop), lit, "\(tag): a key lit up while the row scrolled back")
             XCTAssertTrue(state(desktop).status.contains("key down none"), "\(tag): \(state(desktop).status)")
@@ -209,13 +227,18 @@ final class DesktopTests: XCTestCase {
             XCTAssertGreaterThan(highlights(desktop), lit, "\(tag): a tap didn't light the key")
             XCTAssertTrue(state(desktop).status.contains("key down none"), "\(tag): \(state(desktop).status)")
 
-            // The function keys scroll the same way, Fn (now Back) staying put
+            // The function keys scroll the same way, Fn (now Back) going along with them
             fn.tap()
             XCTAssertTrue(app.buttons["key.F1"].waitForExistence(timeout: 3), "\(tag): no function keys")
             let f1 = app.buttons["key.F1"].frame
             XCTAssertTrue(MultiTouch.timed([(CGPoint(x: f1.midX + 120, y: f1.midY), CGVector(dx: -200, dy: 0), 0, 0.3, 0)], testCase: self))
-            sleep(1)
-            XCTAssertEqual(fn.frame.minX, fnFrame.minX, accuracy: 0.5, "\(tag): Back moved with the function keys")
+            let f1Scrolled = settledFrame(app.buttons["key.F1"])
+            if orientation == .portrait {
+                // (In landscape all twelve fit, so there's nothing to scroll)
+                XCTAssertLessThan(f1Scrolled.minX, f1.minX - 50, "\(tag): the function keys didn't scroll (F1 \(f1) → \(f1Scrolled))")
+            }
+            XCTAssertEqual(fn.frame.minX - fnFrame.minX, f1Scrolled.minX - f1.minX, accuracy: 1,
+                           "\(tag): Back didn't scroll with the function keys (\(fnFrame) → \(fn.frame))")
             XCTAssertEqual(events(desktop, since: count), ["key 0x1B"], "\(tag): scrolling the function keys sent keys")
             shot("\(tag)-2-function-keys-scrolled")
             app.terminate()
@@ -224,6 +247,18 @@ final class DesktopTests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// The element's frame once a scroll has come to rest (unchanged for half a second).
+    private func settledFrame(_ element: XCUIElement) -> CGRect {
+        var frame = element.frame
+        for _ in 0..<12 {
+            usleep(500_000)
+            let now = element.frame
+            if now == frame { break }
+            frame = now
+        }
+        return frame
+    }
 
     private func openKeyboard(_ app: XCUIApplication, tag: String) {
         if !app.buttons["key.Esc"].exists {
@@ -234,21 +269,13 @@ final class DesktopTests: XCTestCase {
         sleep(1)
     }
 
-    /// Closes the keyboard the way a person does now: a swipe down on the key row.
+    /// Closes the keyboard with the key row's hide button.
     private func closeKeyboard(_ app: XCUIApplication) {
-        let tab = app.buttons["key.Tab"]
-        guard tab.exists else { return }
-        tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .press(forDuration: 0.05, thenDragTo: tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 220)))
+        let hide = app.buttons["key.hide"]
+        guard hide.exists else { return }
+        hide.tap()
         _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.buttons["key.Esc"])],
                            timeout: 5)
-    }
-
-    /// How far the last swipe down on the key row took the keyboard, in points.
-    private func pulledDistance(_ desktop: XCUIElement) -> Double {
-        let status = state(desktop).status
-        guard let range = status.range(of: #"keyboard pulled ([0-9]+)"#, options: .regularExpression) else { return -1 }
-        return Double(status[range].replacingOccurrences(of: "keyboard pulled ", with: "")) ?? -1
     }
 
     /// How many times a key in the row has lit up.

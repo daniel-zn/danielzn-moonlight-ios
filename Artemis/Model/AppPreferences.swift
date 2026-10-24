@@ -33,7 +33,7 @@ enum AppPreferences {
 
     static var onScreenGamepadOpacity: Double {
         let value = UserDefaults.standard.object(forKey: Keys.onScreenGamepadOpacity) == nil
-            ? 0.85 : UserDefaults.standard.double(forKey: Keys.onScreenGamepadOpacity)
+            ? 0.75 : UserDefaults.standard.double(forKey: Keys.onScreenGamepadOpacity)
         return min(max(value, 0.3), 1)
     }
 
