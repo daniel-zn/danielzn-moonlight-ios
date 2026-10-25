@@ -29,7 +29,7 @@ final class OnScreenGamepadTests: XCTestCase {
     func testGamepadUpright() {
         let tag = "\(appearance)-portrait-L-gamepad"
         let (app, desktop) = connect(orientation: .portrait)
-        XCTAssertTrue(status(desktop).contains("edges none"), "\(tag): system gestures deferred (\(status(desktop)))")
+        XCTAssertTrue(status(desktop).contains("edges all"), "\(tag): system gestures not deferred (\(status(desktop)))")
 
         let trackpad = app.otherElements["trackpad"].firstMatch
         let bar = app.buttons["bar.keyboard"]
@@ -75,12 +75,52 @@ final class OnScreenGamepadTests: XCTestCase {
         app.terminate()
     }
 
+    /// Landscape, the controller shown: a stick pushed from its bottom, next to the screen's bottom
+    /// edge, reaches the stick, and a fast swipe up from the very bottom edge over it doesn't leave
+    /// the app (the edges are deferred: a first swipe only shows the home indicator).
+    func testStickNearBottomEdge() {
+        let tag = "\(appearance)-landscape-L-gamepad-bottom-edge"
+        let (app, desktop) = connect(orientation: .landscapeLeft)
+        XCTAssertTrue(status(desktop).contains("edges all"), "\(tag): system gestures not deferred (\(status(desktop)))")
+        app.buttons["bar.gamepad"].tap()
+        XCTAssertTrue(app.buttons["pad.A"].waitForExistence(timeout: 5), "\(tag): no gamepad")
+        sleep(1)
+        let window = app.windows.firstMatch.frame
+        for (id, label) in [("pad.leftStick", "ls"), ("pad.rightStick", "rs")] {
+            let stick = control(app, id).frame
+            print("EDGE \(tag) \(id) \(stick) in \(window)")
+            // From the stick's bottom (as close to the edge as it goes), up and to the side
+            var count = state(desktop).count
+            let start = CGPoint(x: stick.midX, y: min(stick.maxY - 4, window.maxY - 4))
+            XCTAssertTrue(MultiTouch.drag(fingers: [start], by: CGVector(dx: 40, dy: -40), duration: 0.5, testCase: self))
+            sleep(1)
+            var new = events(desktop, since: count)
+            var values = new.compactMap { stickValue($0, label) }
+            XCTAssertTrue(values.contains { $0.x > 8000 }, "\(tag) \(id) from its bottom: \(new)")
+            XCTAssertEqual(values.last.map { [$0.x, $0.y] }, [0, 0], "\(tag) \(id) didn't return to the centre: \(new)")
+
+            // From the very bottom edge, fast, as a swipe home would go
+            count = state(desktop).count
+            XCTAssertTrue(MultiTouch.drag(fingers: [CGPoint(x: stick.midX, y: window.maxY - 1)], by: CGVector(dx: 0, dy: -min(160, window.height * 0.45)),
+                                          duration: 0.15, testCase: self))
+            sleep(2)
+            XCTAssertEqual(app.state, .runningForeground, "\(tag) \(id): a swipe up from the bottom edge left the app")
+            XCTAssertTrue(desktop.exists, "\(tag) \(id): the session is gone after a swipe from the bottom edge")
+            new = events(desktop, since: count)
+            values = new.compactMap { stickValue($0, label) }
+            print("EDGE \(tag) \(id) swipe from the edge: \(new.suffix(6))")
+            if app.state != .runningForeground { app.activate() }
+        }
+        shot("\(tag)")
+        app.terminate()
+    }
+
     /// Landscape: the gamepad lies over the desktop; touches away from its controls still
     /// move the pointer, touches on them don't.
     func testGamepadLandscape() {
         let tag = "\(appearance)-landscape-L-gamepad"
         let (app, desktop) = connect(orientation: .landscapeLeft)
-        XCTAssertTrue(status(desktop).contains("edges none"), "\(tag): system gestures deferred (\(status(desktop)))")
+        XCTAssertTrue(status(desktop).contains("edges all"), "\(tag): system gestures not deferred (\(status(desktop)))")
         XCTAssertFalse(app.buttons["bar.rightClick"].exists, "\(tag): the bar still has a right click")
         app.buttons["bar.gamepad"].tap()
         XCTAssertTrue(app.buttons["pad.A"].waitForExistence(timeout: 5), "\(tag): no gamepad")

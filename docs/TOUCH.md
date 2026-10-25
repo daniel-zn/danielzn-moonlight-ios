@@ -21,7 +21,7 @@ with the pointer in the middle of the desktop.
 | Press and hold (0.45 s, haptic), then drag | Left drag |
 | Press and hold, then lift without moving | Right click |
 | Two-finger tap | Right click (when zoomed in, it waits 0.25 s for a second two-finger tap) |
-| Two-finger drag | Scroll, both directions, high-resolution, with momentum after the fingers lift |
+| Two-finger drag | Scroll, both directions, high-resolution, with momentum after the fingers lift; the wheel events a Mac trackpad sends with natural scrolling (fingers up = wheel down, fingers left = wheel right) |
 | Pinch | Zooms the view on the iPhone (1× to 5×); moving the fingers while pinching pans |
 | Two-finger double tap | Resets the zoom |
 | Three-finger tap | Shows or hides the keyboard |
@@ -104,9 +104,14 @@ how Apollo types.
 - The keyboard and its key row lie on top: the desktop, the trackpad area and the control bar keep their size and
   place when it opens or closes, even where it covers them (`DesktopTests/testKeyboardOverlays`).
 - Haptics: light on clicks, medium when a press and hold starts, selection ticks on modifier keys.
-- **System gestures** work as in any app: one swipe from the top opens Notification or Control Centre, one swipe up
-  from the bottom goes home. The session doesn't defer the screen edges (`preferredScreenEdgesDeferringSystemGestures`
-  isn't overridden; the desktop's state line reads `edges none`) and doesn't hide the home indicator. The status bar
+- **System gestures** need a second swipe during a session, so the sticks, the trackpad and the desktop can be used
+  right up to the edges (iOS reserves strips at the top and bottom): the first swipe from the top only shows the tab,
+  a second opens Notification or Control Centre; the first swipe up from the bottom only shows the home indicator, a
+  second goes home. The session's presented controller (StreamFrameViewController, or the demo's) defers every edge
+  (`preferredScreenEdgesDeferringSystemGestures` = all, asked again on appear and after a rotation; the desktop's
+  state line reads `edges all`) and hides the home indicator. A stick pushed from its bottom next to the screen's
+  edge still reaches the stick, and a fast swipe from the bottom edge over it doesn't leave the app
+  (`OnScreenGamepadTests/testStickNearBottomEdge`). Outside a session the app behaves as any app. The status bar
   stays hidden.
 
 ## Mapping to Moonlight's input calls
@@ -123,8 +128,9 @@ The calls run on one serial queue, so a click's press and release (30 ms apart) 
 
 ## Settings › Touch & Pointer
 
-Default mode (Trackpad / Direct), Pointer speed, Natural scrolling (content follows the fingers, on by default),
-Show control bar.
+Default mode (Trackpad / Direct), Pointer speed, Natural scrolling (content follows the fingers, on by default,
+as on a Mac's trackpad; off reverses both axes and the momentum; `DesktopTests/testScrollDirectionLikeAMac`, upright
+on the trackpad area and in landscape on the desktop), Show control bar.
 
 ## Testing without a PC
 

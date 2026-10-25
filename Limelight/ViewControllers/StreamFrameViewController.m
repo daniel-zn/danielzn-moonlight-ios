@@ -670,7 +670,7 @@
 }
 
 - (void)gamepadPresenceChanged {
-    // Artemis: the home indicator stays either way (prefersHomeIndicatorAutoHidden)
+    // Artemis: the home indicator hides either way during a session (prefersHomeIndicatorAutoHidden)
 }
 
 - (void)mousePresenceChanged {
@@ -694,15 +694,41 @@
 }
 
 #if !TARGET_OS_TV
-// Artemis: system gestures work as in any app (one swipe opens Notification or Control Centre,
-// or goes home), and the home indicator stays: no edges deferred, nothing auto-hidden.
+// Artemis: during a session a swipe from any edge needs a second swipe, so the sticks and the
+// desktop can be used near the edges (the bottom above all): the first swipe only shows the
+// system's tab, a second opens Notification or Control Centre or goes home. The home indicator
+// hides. This controller is presented full screen, so iOS asks it, not the app's hosting
+// controller or its desktop child. Outside a session the app behaves as any app.
+- (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
+    return UIRectEdgeAll;
+}
+
+- (UIViewController *)childViewControllerForScreenEdgesDeferringSystemGestures {
+    return nil;
+}
+
+- (UIViewController *)childViewControllerForHomeIndicatorAutoHidden {
+    return nil;
+}
+
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    // Ask again once on screen: a request while presenting can be dropped
+    [self setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+    [self setNeedsUpdateOfHomeIndicatorAutoHidden];
     [self setNeedsStatusBarAppearanceUpdate];
 }
 
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+        [self setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+        [self setNeedsUpdateOfHomeIndicatorAutoHidden];
+    }];
+}
+
 - (BOOL)prefersHomeIndicatorAutoHidden {
-    return NO;
+    return YES;
 }
 
 - (BOOL)shouldAutorotate {

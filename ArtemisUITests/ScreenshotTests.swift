@@ -142,8 +142,9 @@ final class ScreenshotTests: XCTestCase {
                 let running = app.buttons["game.Desktop"]
                 XCTAssertTrue(running.waitForExistence(timeout: 10), "\(tag): the apps didn't open")
                 XCTAssertTrue(reveal(app.buttons["game.end"], in: app, timeout: 1), "\(tag): no Stop button")
-                XCTAssertTrue(app.staticTexts["game.running"].exists, "\(tag): no Active badge")
-                XCTAssertEqual(app.staticTexts["game.running"].label, "Active", "\(tag): the badge isn't Active")
+                let dot = app.descendants(matching: .any)["game.running"]
+                XCTAssertTrue(dot.exists, "\(tag): no active dot")
+                XCTAssertEqual(dot.label, "Active", "\(tag): the dot doesn't read Active")
                 let resume = app.buttons["game.resume"]
                 XCTAssertTrue(resume.exists, "\(tag): no Resume button")
                 assertOnScreen(resume, in: app, tag)
@@ -275,11 +276,11 @@ final class ScreenshotTests: XCTestCase {
         let failed = app.alerts.firstMatch
         XCTAssertTrue(starting.waitForExistence(timeout: 10) || failed.waitForExistence(timeout: 1), "the session didn't start")
         XCTAssertTrue(app.buttons["bar.disconnect"].exists || failed.exists, "no control bar on the stream screen")
-        // The real stream screen doesn't defer system gestures: one swipe opens them, as in any app
+        // The real stream screen defers system gestures on every edge, as the demo's does
         let desktop = app.otherElements["desktop"]
         if desktop.exists, !failed.exists {
             let status = (desktop.value as? String ?? "").components(separatedBy: "\n").first ?? ""
-            XCTAssertTrue(status.contains("edges none"), "stream screen: \(status)")
+            XCTAssertTrue(status.contains("edges all"), "stream screen: \(status)")
         }
         XCTAssertEqual(XCUIDevice.shared.orientation, .portrait)
         shot(app, "\(appearance)-stream-starting")
@@ -291,7 +292,7 @@ final class ScreenshotTests: XCTestCase {
         // Back on the apps list; nothing is active any more
         XCTAssertTrue(app.buttons["game.Blender"].waitForExistence(timeout: 10), "didn't return to the apps")
         sleep(2)
-        XCTAssertFalse(app.staticTexts["game.running"].exists, "Desktop still shows as active")
+        XCTAssertFalse(app.descendants(matching: .any)["game.running"].exists, "Desktop still shows as active")
         shot(app, "\(appearance)-portrait-L-10-after-session")
     }
 }

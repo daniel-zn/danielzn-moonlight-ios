@@ -50,6 +50,8 @@ final class DemoDesktopViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
         // A controller for the UI tests (-ArtemisDemoGamepad "<steps>"), see DemoGamepadScript
         guard !ranGamepadScript, let script = UserDefaults.standard.string(forKey: "ArtemisDemoGamepad") else { return }
         ranGamepadScript = true
@@ -62,6 +64,17 @@ final class DemoDesktopViewController: UIViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
     override var prefersStatusBarHidden: Bool { true }
     override var childForHomeIndicatorAutoHidden: UIViewController? { desktop }
+    // As StreamFrameViewController: a first swipe from any edge only shows the system's tab
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
+    override var childForScreenEdgesDeferringSystemGestures: UIViewController? { nil }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: nil) { _ in
+            self.setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+            self.setNeedsUpdateOfHomeIndicatorAutoHidden()
+        }
+    }
 
     /// A Windows-like desktop: wallpaper, icons, an editor window and the taskbar.
     static let desktopImage: UIImage = {

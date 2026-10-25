@@ -2,7 +2,8 @@
 //  GamesView.swift
 //  Artemis
 //
-//  A PC's apps, as rows with their artwork and an Active badge, like the Mac app;
+//  A PC's apps, as rows with their artwork; an active app has a green dot after its name and
+//  Resume and Stop under it, like the Mac app;
 //  tapping connects to one or resumes the active session.
 //
 
@@ -153,16 +154,28 @@ struct GameRow: View {
 
     var body: some View {
         // Separate buttons with their own styles, so a tap on the row doesn't press Resume too.
-        // An active app's buttons sit under its name, which leaves the name room upright.
+        // An active app's buttons sit on the line under its name, beside the artwork, so the row
+        // keeps a normal row's height: the row's button keeps room for them (an unseen copy) and
+        // the real ones lie over it there. At the accessibility text sizes they go under the row.
         VStack(alignment: .leading, spacing: 8) {
             mainButton
-            if game.isRunning {
+                .overlayPreferenceValue(InlineButtonsAnchor.self) { anchor in
+                    if let anchor, game.isRunning {
+                        GeometryReader { proxy in
+                            let frame = proxy[anchor]
+                            buttons
+                                .offset(x: frame.minX, y: frame.minY)
+                        }
+                    }
+                }
+            if game.isRunning && typeSize.isAccessibilitySize {
                 buttons
-                    .padding(.leading, typeSize.isAccessibilitySize ? 0 : 68)
             }
         }
         .padding(.vertical, 2)
     }
+
+    @ScaledMetric(relativeTo: .body) private var dotSize: CGFloat = 8
 
     private var mainButton: some View {
         Button(action: onTap) {
@@ -185,18 +198,23 @@ struct GameRow: View {
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(game.name)
-                .artemisFont(.bodyEmphasized)
-                .foregroundStyle(game.isHidden ? .secondary : .primary)
-            if game.isRunning {
-                Text("Active")
-                    .artemisFont(.caption)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3)
-                    .background(.green, in: .capsule)
-                    .accessibilityIdentifier("game.running")
-            } else if game.isHidden {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(game.name)
+                    .artemisFont(.bodyEmphasized)
+                    .foregroundStyle(game.isHidden ? .secondary : .primary)
+                if game.isRunning {
+                    // A green dot after the name: the app is active
+                    Circle()
+                        .fill(.green)
+                        .frame(width: dotSize, height: dotSize)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.bottom] + dotSize * 0.4 }
+                        .accessibilityElement()
+                        .accessibilityLabel("Active")
+                        .accessibilityAddTraits(.isStaticText)
+                        .accessibilityIdentifier("game.running")
+                }
+            }
+            if game.isHidden {
                 Label("Hidden", systemImage: "eye.slash")
                     .artemisFont(.caption)
                     .foregroundStyle(.secondary)
@@ -206,6 +224,14 @@ struct GameRow: View {
                     .artemisFont(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("game.directLaunch")
+            }
+            if game.isRunning && !typeSize.isAccessibilitySize {
+                // Room for Resume and Stop, which lie over this
+                buttons
+                    .hidden()
+                    .accessibilityHidden(true)
+                    .anchorPreference(key: InlineButtonsAnchor.self, value: .bounds) { $0 }
+                    .padding(.top, 2)
             }
         }
     }
@@ -230,9 +256,16 @@ struct GameRow: View {
                 .accessibilityIdentifier("game.end")
             }
             .labelStyle(.titleAndIcon)
-            .artemisFont(.subheadline)
+            .artemisFont(typeSize.isAccessibilitySize ? .subheadline : .footnote)
+            .controlSize(typeSize.isAccessibilitySize ? .regular : .small)
         }
     }
+}
+
+/// Where an active app's Resume and Stop go in its row: the room kept for them under the name.
+private struct InlineButtonsAnchor: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) { value = value ?? nextValue() }
 }
 
 /// An app's artwork, or a placeholder until the PC has sent it.

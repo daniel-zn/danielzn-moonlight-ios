@@ -280,13 +280,13 @@ final class ComputerTests: XCTestCase {
         app.buttons["computer.ENCHILADA"].tap()
         let desktopApp = app.buttons["game.Desktop"]
         XCTAssertTrue(desktopApp.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["game.running"].exists, "Desktop isn't active to begin with")
+        XCTAssertTrue(app.descendants(matching: .any)["game.running"].exists, "Desktop isn't active to begin with")
         desktopApp.tap()
         XCTAssertTrue(app.otherElements["desktop"].waitForExistence(timeout: 10))
         disconnect(app)
         XCTAssertTrue(desktopApp.waitForExistence(timeout: 10), "didn't return to the apps")
         let ended = NSPredicate(format: "exists == false")
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ended, object: app.staticTexts["game.running"])], timeout: 10),
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ended, object: app.descendants(matching: .any)["game.running"])], timeout: 10),
                        .completed, "the app is still active after disconnecting")
         app.terminate()
     }
@@ -403,5 +403,67 @@ final class ComputerTests: XCTestCase {
         sleep(1)
         shot("\(appearance)-portrait-L-native-resolution")
         app.terminate()
+    }
+
+    /// An active app's row: a green dot after the name (no Active badge), Resume and Stop on the
+    /// line under the name, and the row no taller than an inactive one, upright and in landscape.
+    func testActiveRowIsCompact() {
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            let name = orientation == .portrait ? "portrait" : "landscape"
+            let tag = "\(appearance)-\(name)"
+            let app = launch()
+            XCUIDevice.shared.orientation = orientation
+            app.buttons["computer.ENCHILADA"].tap()
+            let active = app.buttons["game.Desktop"]
+            let inactive = app.buttons["game.File Explorer"]
+            XCTAssertTrue(active.waitForExistence(timeout: 10) && inactive.waitForExistence(timeout: 5), "\(tag): the apps didn't open")
+            sleep(1)
+
+            // The dot: small, right after the name, on its line; it reads as Active
+            let dot = app.descendants(matching: .any)["game.running"]
+            XCTAssertTrue(dot.exists, "\(tag): no active dot")
+            XCTAssertEqual(dot.label, "Active", "\(tag): the dot's label")
+            let title = active.staticTexts["Desktop"]
+            XCTAssertTrue(title.exists, "\(tag): no name")
+            XCTAssertLessThanOrEqual(dot.frame.width, 14, "\(tag): the dot is \(dot.frame) (a badge?)")
+            XCTAssertLessThanOrEqual(dot.frame.height, 14, "\(tag): the dot is \(dot.frame) (a badge?)")
+            XCTAssertGreaterThanOrEqual(dot.frame.minX, title.frame.maxX, "\(tag): the dot \(dot.frame) isn't after the name \(title.frame)")
+            XCTAssertLessThan(dot.frame.minX - title.frame.maxX, 12, "\(tag): the dot \(dot.frame) is far from the name \(title.frame)")
+            XCTAssertTrue(dot.frame.midY > title.frame.minY && dot.frame.midY < title.frame.maxY,
+                          "\(tag): the dot \(dot.frame) isn't on the name's line \(title.frame)")
+            let actives = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Active")).allElementsBoundByIndex
+            XCTAssertTrue(actives.allSatisfy { $0.frame.width <= 14 }, "\(tag): an Active badge shows (\(actives.map(\.frame)))")
+
+            // Resume and Stop: under the name, beside the artwork, inside the row
+            let resume = app.buttons["game.resume"], stop = app.buttons["game.end"]
+            XCTAssertTrue(resume.exists && stop.exists, "\(tag): no Resume / Stop")
+            for button in [resume, stop] {
+                XCTAssertTrue(button.isHittable, "\(tag): \(button.identifier) isn't hittable")
+                XCTAssertGreaterThanOrEqual(button.frame.minY, title.frame.maxY - 1, "\(tag): \(button.identifier) \(button.frame) isn't under the name \(title.frame)")
+                XCTAssertGreaterThanOrEqual(button.frame.minX, title.frame.minX - 1, "\(tag): \(button.identifier) \(button.frame) isn't beside the artwork")
+            }
+            XCTAssertEqual(resume.frame.midY, stop.frame.midY, accuracy: 1, "\(tag): Resume and Stop aren't on one line")
+
+            // The same height as an inactive row (the list cells holding each name)
+            let cells = app.cells.allElementsBoundByIndex.map(\.frame)
+            func cell(_ name: String) -> CGRect {
+                let text = app.staticTexts[name].frame
+                return cells.first { $0.contains(CGPoint(x: text.midX, y: text.midY)) } ?? .zero
+            }
+            let activeCell = cell("Desktop"), inactiveCell = cell("File Explorer")
+            XCTAssertFalse(activeCell.isEmpty || inactiveCell.isEmpty, "\(tag): no cells (\(cells))")
+            XCTAssertEqual(activeCell.height, inactiveCell.height, accuracy: 0.5,
+                           "\(tag): the active row is \(activeCell.height), an inactive one \(inactiveCell.height)")
+            for button in [resume, stop] {
+                XCTAssertLessThanOrEqual(button.frame.maxY, activeCell.maxY, "\(tag): \(button.identifier) \(button.frame) hangs out of the cell \(activeCell)")
+            }
+            print("ACTIVE-ROW \(tag): cell \(activeCell.height) vs \(inactiveCell.height), name \(title.frame), dot \(dot.frame), resume \(resume.frame), stop \(stop.frame)")
+            shot("\(tag)-L-active-row")
+
+            // Resume still opens the session
+            resume.tap()
+            XCTAssertTrue(app.otherElements["desktop"].waitForExistence(timeout: 10), "\(tag): Resume didn't connect")
+            app.terminate()
+        }
     }
 }

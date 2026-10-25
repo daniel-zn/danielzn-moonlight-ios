@@ -81,6 +81,8 @@ final class ComputerStore {
         guard !started else { return }
         started = true
         StreamSettings.adoptNativeDefaultIfUnchanged()
+        PointerSettings.applyTestState()
+        PointerSettings.adoptNaturalScrollingOnce()
 
         // Discovery's polls change the hosts on background threads; each change posts this
         observers.append(NotificationCenter.default.addObserver(forName: .artemisHostUpdated, object: nil, queue: .main) { [weak self] _ in

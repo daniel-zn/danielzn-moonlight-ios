@@ -413,9 +413,15 @@ struct SettingsPage: View {
                 .accessibilityValue(String(format: "%.1f×", pointer.pointerSpeed))
                 .accessibilityIdentifier("settings.pointerSpeed")
             }
-            Toggle("Natural scrolling", isOn: $pointer.naturalScrolling)
+            Picker("Scroll direction", selection: $pointer.naturalScrolling) {
+                Text("Natural").tag(true)
+                Text("Reversed").tag(false)
+            }
+            .accessibilityIdentifier("settings.scrollDirection")
         } footer: {
-            Note("With natural scrolling, the content follows your fingers, as on iPhone.")
+            Note(pointer.naturalScrolling
+                 ? "Natural, like a Mac's trackpad and iPhone: two fingers up scroll further down the page, two fingers left scroll right."
+                 : "Reversed: two fingers up scroll back up the page, two fingers left scroll left, like a mouse's scroll wheel.")
         }
         Section {
             Toggle("Show control bar", isOn: $pointer.showControlBar)

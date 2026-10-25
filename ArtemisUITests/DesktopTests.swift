@@ -28,6 +28,113 @@ final class DesktopTests: XCTestCase {
     func testLargeTextUpright() { largeText(orientation: .portrait, name: "portrait") }
     func testLargeTextLandscape() { largeText(orientation: .landscapeLeft, name: "landscape") }
 
+    /// Two-finger scrolling sends what a Mac trackpad sends with natural scrolling (macOS's
+    /// default): fingers up = wheel down (negative: the content moves up with them), fingers
+    /// left = wheel right (positive), momentum on in the same direction after a flick. Upright on
+    /// the trackpad area, in landscape on the desktop. Natural scrolling off reverses it.
+    func testScrollDirectionLikeAMac() {
+        for natural in [true, false] {
+            for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+                scrollDirection(orientation: orientation, natural: natural)
+            }
+        }
+    }
+
+    /// A phone with Reversed stored from before moves to Natural once; choosing Reversed in
+    /// Settings › Touch & Pointer › Scroll direction afterwards stays across launches.
+    func testScrollDirectionMovesToNaturalOnce() {
+        // Reversed stored, not yet moved: it scrolls the Mac's way
+        scrollDirection(orientation: .portrait, natural: true, extra: ["-ArtemisTestReversedScrolling", "YES"], quick: true)
+
+        // Choose Reversed in Settings
+        let app = XCUIApplication()
+        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL"]
+        app.launch()
+        XCTAssertTrue(app.buttons["computers.settings"].waitForExistence(timeout: 15))
+        app.buttons["computers.settings"].tap()
+        XCTAssertTrue(app.buttons["settings.touch"].waitForExistence(timeout: 5))
+        app.buttons["settings.touch"].tap()
+        let picker = app.buttons["settings.scrollDirection"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5), "no Scroll direction")
+        XCTAssertTrue(picker.label.contains("Scroll direction"), "picker: \(picker.label)")
+        XCTAssertTrue("\(picker.label) \(picker.value as? String ?? "")".contains("Natural"), "not Natural after the move: \(picker.label) \(picker.value ?? "")")
+        sleep(1)
+        shot("\(appearance)-portrait-L-scroll-direction")
+        picker.tap()
+        let reversed = app.buttons["Reversed"].firstMatch
+        XCTAssertTrue(reversed.waitForExistence(timeout: 5), "no Reversed choice")
+        reversed.tap()
+        sleep(1)
+        XCTAssertTrue("\(picker.label) \(picker.value as? String ?? "")".contains("Reversed"), "didn't choose Reversed: \(picker.label)")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Reversed:")).firstMatch.exists, "no Reversed footer")
+        app.terminate()
+
+        // A later launch keeps Reversed (the move happens once)
+        scrollDirection(orientation: .portrait, natural: false, extra: [], quick: true)
+
+        // Back to Natural for the other tests (the test hook stores Reversed and moves again)
+        let reset = XCUIApplication()
+        reset.launchArguments = ["-ArtemisDemo", "YES", "-ArtemisTestReversedScrolling", "YES"]
+        reset.launch()
+        XCTAssertTrue(reset.buttons["computers.settings"].waitForExistence(timeout: 15))
+        reset.terminate()
+    }
+
+    private func scrollDirection(orientation: UIDeviceOrientation, natural: Bool, extra: [String]? = nil, quick: Bool = false) {
+        let tag = "\(orientation == .portrait ? "portrait trackpad" : "landscape desktop"), natural \(natural ? "on" : "off")"
+        let (app, desktop) = connect(orientation: orientation, extra: extra ?? (natural ? [] : ["-ArtemisNaturalScrolling", "NO"]))
+        let area = orientation == .portrait ? app.otherElements["trackpad"].frame : videoFrame(desktop)
+        XCTAssertFalse(area.isEmpty, "\(tag): no surface")
+        let sign = natural ? 1 : -1
+        func scrolls(_ new: [String]) -> [(Int, Int)] {
+            new.filter { $0.hasPrefix("scroll") }.compactMap { event in
+                let parts = event.split(separator: " ")
+                guard parts.count == 3, let v = Int(parts[1]), let h = Int(parts[2]) else { return nil }
+                return (v, h)
+            }
+        }
+        func twoFingers(by delta: CGVector, duration: TimeInterval) -> [(Int, Int)] {
+            let count = state(desktop).count
+            XCTAssertTrue(MultiTouch.drag(fingers: [CGPoint(x: area.midX - 25 - delta.dx / 2, y: area.midY - delta.dy / 2),
+                                                    CGPoint(x: area.midX + 25 - delta.dx / 2, y: area.midY - delta.dy / 2)],
+                                          by: delta, duration: duration, testCase: self), "\(tag): couldn't synthesize two fingers")
+            sleep(2)
+            let new = events(desktop, since: count)
+            XCTAssertTrue(moves(new).isEmpty, "\(tag): scrolling moved the pointer (\(new))")
+            return scrolls(new)
+        }
+
+        // Fingers up, slowly: wheel down (negative), nothing sideways
+        let up = twoFingers(by: CGVector(dx: 0, dy: -min(100, area.height * 0.6)), duration: 0.8)
+        print("SCROLL \(tag) fingers up: \(up.map { "\($0.0) \($0.1)" })")
+        XCTAssertFalse(up.isEmpty, "\(tag) fingers up: no scroll")
+        XCTAssertLessThan(up.map(\.0).reduce(0, +) * sign, -120, "\(tag) fingers up: \(up)")
+        XCTAssertTrue(up.allSatisfy { $0.0 * sign <= 0 && $0.1 == 0 }, "\(tag) fingers up: \(up)")
+        if quick {
+            app.terminate()
+            return
+        }
+
+        // Fingers down: wheel up
+        let down = twoFingers(by: CGVector(dx: 0, dy: min(100, area.height * 0.6)), duration: 0.8)
+        XCTAssertGreaterThan(down.map(\.0).reduce(0, +) * sign, 120, "\(tag) fingers down: \(down)")
+
+        // Fingers left: wheel right (positive)
+        let left = twoFingers(by: CGVector(dx: -min(140, area.width * 0.5), dy: 0), duration: 0.8)
+        print("SCROLL \(tag) fingers left: \(left.map { "\($0.0) \($0.1)" })")
+        XCTAssertGreaterThan(left.map(\.1).reduce(0, +) * sign, 120, "\(tag) fingers left: \(left)")
+        XCTAssertTrue(left.allSatisfy { $0.1 * sign >= 0 && $0.0 == 0 }, "\(tag) fingers left: \(left)")
+
+        // A flick up: momentum carries on the same way after the fingers lift
+        let flickDistance = min(90, area.height * 0.6)
+        let flick = twoFingers(by: CGVector(dx: 0, dy: -flickDistance), duration: 0.1)
+        print("SCROLL \(tag) flick up: \(flick.map { "\($0.0) \($0.1)" })")
+        XCTAssertTrue(flick.allSatisfy { $0.0 * sign <= 0 }, "\(tag) flick: momentum turned around (\(flick))")
+        // The fingers alone travel flickDistance (5 units a point): momentum adds to it
+        XCTAssertLessThan(flick.map(\.0).reduce(0, +) * sign, -Int(flickDistance * 5) - 120, "\(tag) flick: no momentum (\(flick))")
+        app.terminate()
+    }
+
     /// Windows' sign-in screen takes only key events, not Unicode text: a password typed on the
     /// iOS keyboard, or typed from the clipboard, goes as keys (Shift for capitals and "!").
     func testTypedPassword() {
@@ -76,9 +183,9 @@ final class DesktopTests: XCTestCase {
             func frames() -> [String: CGRect] {
                 Dictionary(uniqueKeysWithValues: watched.map { ($0.0, $0.1.frame) })
             }
-            // System gestures aren't deferred: one swipe opens Notification / Control Centre or goes home
+            // System gestures deferred on every edge: a first swipe only shows the system's tab
             let status = (desktop.value as? String ?? "").components(separatedBy: "\n").first ?? ""
-            XCTAssertTrue(status.contains("edges none"), "\(tag): \(status)")
+            XCTAssertTrue(status.contains("edges all"), "\(tag): \(status)")
             let before = frames()
             for (key, frame) in before {
                 XCTAssertFalse(frame.isEmpty, "\(tag): \(key) not on screen")
@@ -298,10 +405,10 @@ final class DesktopTests: XCTestCase {
     }
 
     /// Opens the demo PC's active Desktop app: the connected screen.
-    private func connect(size: String = "UICTContentSizeCategoryL", orientation: UIDeviceOrientation) -> (XCUIApplication, XCUIElement) {
+    private func connect(size: String = "UICTContentSizeCategoryL", orientation: UIDeviceOrientation, extra: [String] = []) -> (XCUIApplication, XCUIElement) {
         let app = XCUIApplication()
         app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", size,
-                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"]
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"] + extra
         app.launch()
         XCUIDevice.shared.orientation = orientation
         let enchilada = app.buttons["computer.ENCHILADA"]

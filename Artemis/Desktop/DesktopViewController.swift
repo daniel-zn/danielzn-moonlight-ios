@@ -599,8 +599,8 @@ final class DesktopViewController: UIViewController {
     // MARK: Status bar, orientation
 
     /// The edges iOS defers system gestures on right now: those of the controller it asks
-    /// (the topmost presented one, then its children as they forward the question). None:
-    /// one swipe opens Notification or Control Centre, or goes home, as in any app.
+    /// (the topmost presented one, then its children as they forward the question). A session
+    /// defers all of them: a first swipe from an edge only shows the system's tab.
     var deferredEdges: UIRectEdge {
         var controller = view.window?.rootViewController
         while let presented = controller?.presentedViewController, !presented.isBeingDismissed {
@@ -621,7 +621,8 @@ final class DesktopViewController: UIViewController {
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
     override var prefersStatusBarHidden: Bool { true }
-    override var prefersHomeIndicatorAutoHidden: Bool { false }
+    override var prefersHomeIndicatorAutoHidden: Bool { true }
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { .all }
 
     /// A small arrow pointer for the demo desktop.
     static let cursorImage: UIImage = {
