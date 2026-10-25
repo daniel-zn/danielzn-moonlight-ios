@@ -38,6 +38,15 @@ enum DemoData {
         }
     }
 
+    /// UI tests that type into an alert at the largest text size turn UIKit's animations off
+    /// (-ArtemisNoAnimations YES): each keystroke XCTest sends hides or brings back the keyboard,
+    /// the scrolling alert relays out with it, and now and then UIKit reports one of those
+    /// animations starting but never stopping. XCTest then never sees the app idle and waits
+    /// 60 s before every later step.
+    static var disablesAnimations: Bool {
+        isEnabled && UserDefaults.standard.bool(forKey: "ArtemisNoAnimations")
+    }
+
     /// ENCHILADA goes to sleep a moment after launch (-ArtemisDemoSleep YES).
     static var sleepsAfterLaunch: Bool {
         UserDefaults.standard.bool(forKey: "ArtemisDemoSleep")

@@ -53,12 +53,26 @@ final class ComputerTests: XCTestCase {
         app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
     }
 
-    /// Long-presses a row and returns its menu's item (pressing again if the menu didn't open).
+    /// Long-presses a row (scrolled on screen first) and returns its menu's item (pressing again if
+    /// the menu didn't open).
+    /// A menu taller than the screen (landscape at the largest text size) scrolls, and lists only
+    /// the items on screen: it's scrolled until the item shows.
     private func openMenu(_ row: XCUIElement, item label: String, in app: XCUIApplication) -> XCUIElement {
         let item = menuItem(app, label)
+        // The menu: the collection view with a button that isn't a PC's or an app's row
+        let menu = app.collectionViews.containing(NSPredicate(format: "elementType == %d AND NOT (identifier BEGINSWITH 'computer.') AND NOT (identifier BEGINSWITH 'game.')",
+                                                              XCUIElement.ElementType.button.rawValue)).firstMatch
         for _ in 0..<3 {
+            // A turn to landscape can leave the row scrolled under the navigation bar
+            reveal(row, in: app)
             row.press(forDuration: 1.3)
-            if item.waitForExistence(timeout: 3) { return item }
+            guard menu.waitForExistence(timeout: 3) else { continue }
+            if item.waitForExistence(timeout: 1) { return item }
+            for _ in 0..<4 where menu.exists && !item.exists {
+                menu.swipeUp(velocity: .slow)
+                _ = item.waitForExistence(timeout: 1)
+            }
+            if item.exists && item.isHittable { return item }
         }
         print("[tree] \(app.debugDescription)")
         return item
@@ -78,26 +92,42 @@ final class ComputerTests: XCTestCase {
         return element.exists && element.isHittable
     }
 
-    /// Empties a text field: from its end (a tap mid-text leaves part of it), again while text is
-    /// left (keys typed on a busy machine can go missing).
-    private func clear(_ field: XCUIElement) {
-        for _ in 0..<5 {
-            let text = field.value as? String ?? ""
-            if text.isEmpty || text == field.placeholderValue { return }
-            field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
-            sleep(1)
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count + 2))
+    /// Waits until an element is on screen and stays put (the same frame for half a second).
+    private func settled(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        var last = CGRect.null
+        while Date() < end {
+            let frame = element.exists && element.isHittable ? element.frame : .null
+            if !frame.isNull && frame == last { return true }
+            last = frame
+            usleep(500_000)
         }
+        return false
     }
 
-    /// Alerts can list a button twice; taps the one on screen, again if the alert was still
-    /// moving for the keyboard.
-    private func tapHittable(_ query: XCUIElementQuery) {
-        for _ in 0..<3 {
-            sleep(1)
-            guard let match = query.allElementsBoundByIndex.first(where: { $0.isHittable }) else { return }
-            match.tap()
-        }
+    /// Sets the name in the open rename alert and confirms it. The alert focuses its field itself,
+    /// with the cursor after the name: the old name's deletes and the new name go in one typing,
+    /// with no tap on the field. Rename is tapped once the keyboard is back and it holds still.
+    private func rename(to name: String, in app: XCUIApplication, _ tag: String) {
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), "\(tag): no rename alert")
+        let field = alert.textFields.firstMatch
+        let focused = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [focused], timeout: 5), .completed, "\(tag): the name field isn't focused")
+        let placeholder = field.placeholderValue ?? ""
+        let old = field.value as? String ?? ""
+        let count = old == placeholder ? 0 : old.count
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count) + name)
+        XCTAssertEqual(field.value as? String ?? "", name.isEmpty ? placeholder : name, "\(tag): the name field")
+        if !name.isEmpty { shot("\(tag)-parity-2-rename") }
+        // XCTest's typing hides the keyboard, which comes back a moment later and moves the alert
+        let keyboard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: app.keyboards.firstMatch)
+        XCTAssertEqual(XCTWaiter.wait(for: [keyboard], timeout: 5), .completed, "\(tag): the keyboard didn't come back after typing")
+        let confirm = alert.buttons["rename.confirm"].firstMatch
+        XCTAssertTrue(settled(confirm), "\(tag): Rename doesn't hold still on screen")
+        confirm.tap()
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
+        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed, "\(tag): the rename alert didn't close")
     }
 
     private func disconnect(_ app: XCUIApplication) {
@@ -194,13 +224,19 @@ final class ComputerTests: XCTestCase {
 
     // MARK: The Mac app's PC and app actions
 
-    /// Rename… and Get Info from a PC's menu; an empty name goes back to the PC's own.
+    /// Rename… and Get Info from a PC's menu; an empty name goes back to the PC's own. Upright and
+    /// in landscape, at the default and the largest text size (ARTEMIS_RENAME_VARIANT=landscape-AX5
+    /// runs one). UIKit's animations are off: see `DemoData.disablesAnimations`.
     func testRenameAndGetInfo() {
+        executionTimeAllowance = 360
+        let only = ProcessInfo.processInfo.environment["ARTEMIS_RENAME_VARIANT"] ?? ""
         for (orientation, size, name) in [(UIDeviceOrientation.portrait, "UICTContentSizeCategoryL", "portrait-L"),
                                           (.landscapeLeft, "UICTContentSizeCategoryL", "landscape-L"),
-                                          (.portrait, "UICTContentSizeCategoryAccessibilityXXXL", "portrait-AX5")] {
+                                          (.portrait, "UICTContentSizeCategoryAccessibilityXXXL", "portrait-AX5"),
+                                          (.landscapeLeft, "UICTContentSizeCategoryAccessibilityXXXL", "landscape-AX5")]
+            where only.isEmpty || only == name {
             let tag = "\(appearance)-\(name)"
-            let app = launch(size: size)
+            let app = launch(["-ArtemisNoAnimations", "YES"], size: size)
             XCUIDevice.shared.orientation = orientation
             let enchilada = app.buttons["computer.ENCHILADA"]
             let rename = openMenu(enchilada, item: "Rename…", in: app)
@@ -209,12 +245,7 @@ final class ComputerTests: XCTestCase {
             XCTAssertTrue(menuItem(app, "Test Network…").exists, "\(tag): no Test Network…")
             shot("\(tag)-parity-1-pc-menu")
             rename.tap()
-            let field = app.alerts.textFields.firstMatch
-            XCTAssertTrue(field.waitForExistence(timeout: 5), "\(tag): no name field")
-            clear(field)
-            field.typeText("Office PC")
-            shot("\(tag)-parity-2-rename")
-            tapHittable(app.alerts.buttons.matching(identifier: "rename.confirm"))
+            self.rename(to: "Office PC", in: app, tag)
             let office = app.buttons["computer.Office PC"]
             XCTAssertTrue(office.waitForExistence(timeout: 5), "\(tag): the PC wasn't renamed")
 
@@ -232,10 +263,7 @@ final class ComputerTests: XCTestCase {
 
             // Back to the PC's own name
             openMenu(office, item: "Rename…", in: app).tap()
-            XCTAssertTrue(field.waitForExistence(timeout: 5))
-            clear(field)
-            XCTAssertEqual(field.value as? String ?? "", field.placeholderValue ?? "", "\(tag): the name field isn't empty")
-            tapHittable(app.alerts.buttons.matching(identifier: "rename.confirm"))
+            self.rename(to: "", in: app, tag)
             XCTAssertTrue(enchilada.waitForExistence(timeout: 5), "\(tag): the empty name didn't restore ENCHILADA")
             app.terminate()
             XCUIDevice.shared.orientation = .portrait

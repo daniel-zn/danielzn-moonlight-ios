@@ -16,6 +16,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene else { return }
+        if DemoData.disablesAnimations {
+            UIView.setAnimationsEnabled(false)
+        }
         Typography.register()
         Typography.styleNavigationBars()
         NotificationCenter.default.addObserver(forName: UIContentSizeCategory.didChangeNotification, object: nil, queue: .main) { _ in

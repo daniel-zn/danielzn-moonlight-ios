@@ -42,6 +42,7 @@
       selectedDebuggerIdentifier = ""
       selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
       shouldUseLaunchSchemeArgsEnv = "YES"
+      testTimeoutsEnabled = "YES"
       preferredScreenCaptureFormat = "screenshots">
       <Testables>
          <TestableReference
