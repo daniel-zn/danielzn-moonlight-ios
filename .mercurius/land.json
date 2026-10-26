@@ -1,0 +1,50 @@
+{
+  "keep": [
+    "build/ui-tests/dd"
+  ],
+  "workspaces": 1,
+  "checks": [
+    {
+      "name": "x1kit",
+      "run": "swift test --package-path X1Kit",
+      "inputs": [
+        "X1Kit"
+      ],
+      "timeout": 10
+    },
+    {
+      "name": "ui",
+      "run": "s=$(xcrun simctl list devices | grep -F 'Artemis Build (' | grep -oE '[0-9A-F-]{36}' | head -1); [ -n \"$s\" ] || { echo 'No Artemis Build Simulator'; exit 1; }; xcrun simctl boot \"$s\" 2>/dev/null; xcrun simctl bootstatus \"$s\" >/dev/null && SIM=$s APPEARANCES=light Scripts/ui-tests.sh; r=$?; xcrun simctl shutdown $s 2>/dev/null; exit $r",
+      "inputs": [
+        "**",
+        "!**/*.md",
+        "!Screenshots/**",
+        "!docs/**",
+        "!Scripts/asc.py",
+        "!Scripts/testflight.sh",
+        "!Scripts/pad-parity/**"
+      ],
+      "line": "sim-artemis",
+      "timeout": 90,
+      "retries": 1
+    },
+    {
+      "name": "ui-dark",
+      "run": "s=$(xcrun simctl list devices | grep -F 'Artemis Build (' | grep -oE '[0-9A-F-]{36}' | head -1); [ -n \"$s\" ] || { echo 'No Artemis Build Simulator'; exit 1; }; xcrun simctl boot \"$s\" 2>/dev/null; xcrun simctl bootstatus \"$s\" >/dev/null && SIM=$s APPEARANCES=dark Scripts/ui-tests.sh; r=$?; xcrun simctl shutdown $s 2>/dev/null; exit $r",
+      "line": "sim-artemis",
+      "nightly": true,
+      "timeout": 90
+    }
+  ],
+  "release": {
+    "run": "mercurius-agent secret run --env ASC_KEY_ID,ASC_ISSUER_ID,ASC_KEY_P8 -- Scripts/testflight.sh",
+    "inputs": [
+      "**",
+      "!**/*.md",
+      "!docs/**",
+      "!.mercurius/**"
+    ],
+    "line": "build",
+    "timeout": 60
+  }
+}
