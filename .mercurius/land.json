@@ -22,11 +22,100 @@
         "!docs/**",
         "!Scripts/asc.py",
         "!Scripts/testflight.sh",
-        "!Scripts/pad-parity/**"
+        "!Scripts/pad-parity/**",
+        "!.github/**",
+        "!appveyor.yml"
       ],
       "line": "sim-artemis",
       "timeout": 90,
-      "retries": 1
+      "retries": 1,
+      "select": {
+        "env": "UI_TESTS",
+        "always": [
+          "ScreenshotTests/testStreamStartsAndReturns",
+          "ScreenshotTests/testEveryScreenUprightDefaultText"
+        ],
+        "rules": [
+          {
+            "paths": [
+              "Artemis/Desktop/OnScreenGamepad.swift",
+              "Artemis/Desktop/PadTouch.swift",
+              "Artemis/Desktop/PadHitTesting.swift",
+              "ArtemisUITests/OnScreenGamepadTests.swift"
+            ],
+            "tests": [
+              "OnScreenGamepadTests"
+            ]
+          },
+          {
+            "paths": [
+              "Artemis/Desktop/GamepadMouse.swift",
+              "ArtemisUITests/ControllerTests.swift"
+            ],
+            "tests": [
+              "ControllerTests"
+            ]
+          },
+          {
+            "paths": [
+              "Artemis/Desktop/KeyRow.swift",
+              "Artemis/Desktop/ControlBar.swift",
+              "Artemis/Desktop/TouchInterpreter.swift",
+              "ArtemisUITests/DesktopTests.swift"
+            ],
+            "tests": [
+              "DesktopTests",
+              "OnScreenGamepadTests"
+            ]
+          },
+          {
+            "paths": [
+              "Artemis/Views/ComputerInfoView.swift",
+              "Artemis/Views/AddComputerView.swift",
+              "Artemis/Views/PairingView.swift",
+              "ArtemisUITests/ComputerTests.swift"
+            ],
+            "tests": [
+              "ComputerTests",
+              "ScreenshotTests"
+            ]
+          },
+          {
+            "paths": [
+              "Artemis/Views/SettingsView.swift"
+            ],
+            "tests": [
+              "ComputerTests",
+              "ScreenshotTests",
+              "DesktopTests/testScrollDirectionMovesToNaturalOnce"
+            ]
+          },
+          {
+            "paths": [
+              "ArtemisUITests/ScreenshotTests.swift"
+            ],
+            "tests": [
+              "ScreenshotTests"
+            ]
+          },
+          {
+            "paths": [
+              "Artemis/AppIcon.icon/**",
+              "ArtemisUITests/HomeScreenIconTests.swift"
+            ],
+            "tests": [
+              "HomeScreenIconTests"
+            ]
+          },
+          {
+            "paths": [
+              "ArtemisUITests/LiveHostTests.swift",
+              "Artemis/Fonts/OFL.txt"
+            ],
+            "tests": []
+          }
+        ]
+      }
     },
     {
       "name": "ui-dark",
