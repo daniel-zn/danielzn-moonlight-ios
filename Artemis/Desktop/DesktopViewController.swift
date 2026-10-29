@@ -41,7 +41,16 @@ final class DesktopViewController: UIViewController {
     private var toastHide: DispatchWorkItem?
     /// Notices shown this session (for the UI tests: a notice is up for 2.5 s only).
     private var toastCount = 0
-    private lazy var barHost = UIHostingController(rootView: ControlBar(session: session))
+    /// The bar, placed by SwiftUI in a hosting view that covers the screen and never moves (moving
+    /// the hosting view left SwiftUI's accessibility frames where the bar had been: VoiceOver and
+    /// Switch Control went for the old spot). Touches outside the bar pass through.
+    private let barPlacement = BarPlacement()
+    private lazy var barHost = UIHostingController(rootView: PlacedControlBar(session: session, placement: barPlacement))
+    private let barLayer = BarPassThroughView()
+    /// Measures the bar (hidden: it follows the same traits, like the text size).
+    private lazy var barSizer = UIHostingController(rootView: ControlBar(session: session))
+    /// Set while a change of the bar's content is laid out: the bar moves and resizes animated.
+    private var animatesBar = false
     private let interpreter = TouchInterpreter()
     /// The demo draws its own pointer; a real stream shows the PC's.
     private let localCursor: UIImageView?
@@ -146,13 +155,25 @@ final class DesktopViewController: UIViewController {
         view.addSubview(keyCapture)
 
 
-        barHost.view.backgroundColor = .clear
-        barHost.sizingOptions = [.intrinsicContentSize]
         // Placed by hand inside the safe area; and no keyboard avoidance, which moved and shrank
         // the bar's content when the keyboard came up over it
+        barSizer.view.isHidden = true
+        barSizer.view.accessibilityElementsHidden = true
+        barSizer.sizingOptions = [.intrinsicContentSize]
+        barSizer.safeAreaRegions = []
+        addChild(barSizer)
+        view.addSubview(barSizer.view)
+        barSizer.didMove(toParent: self)
+        barHost.view.backgroundColor = .clear
         barHost.safeAreaRegions = []
+        barLayer.placement = barPlacement
+        barLayer.frame = view.bounds
+        barLayer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         addChild(barHost)
-        view.addSubview(barHost.view)
+        barHost.view.frame = barLayer.bounds
+        barHost.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        barLayer.addSubview(barHost.view)
+        view.addSubview(barLayer)
         barHost.didMove(toParent: self)
 
         session.actions = makeActions()
@@ -201,7 +222,7 @@ final class DesktopViewController: UIViewController {
         if session.isPortrait != portrait {
             session.isPortrait = portrait
         }
-        let barSize = barHost.sizeThatFits(in: CGSize(width: portrait ? bounds.width : bounds.width - insets.left - insets.right,
+        let barSize = barSizer.sizeThatFits(in: CGSize(width: portrait ? bounds.width : bounds.width - insets.left - insets.right,
                                                       height: bounds.height))
         let padSize = AppPreferences.onScreenGamepadSize
         if portrait {
@@ -211,7 +232,7 @@ final class DesktopViewController: UIViewController {
             let available = max(120, barY - insets.top - 16)
             let height = min(bounds.width / aspect, available)
             canvas.frame = CGRect(x: 0, y: insets.top, width: bounds.width, height: height)
-            barHost.view.frame = CGRect(x: 0, y: barY, width: bounds.width, height: barSize.height)
+            placeBar(CGRect(x: 0, y: barY, width: bounds.width, height: barSize.height))
             let areaTop = canvas.frame.maxY + 10
             let areaBottom = barY - 10
             let area = CGRect(x: 12, y: areaTop, width: bounds.width - 24, height: max(0, areaBottom - areaTop))
@@ -243,10 +264,9 @@ final class DesktopViewController: UIViewController {
                 : orientation == .landscapeRight ? .minXEdge : orientation == .landscapeLeft ? .maxXEdge : nil
             let center = Self.barCenter(CGPoint(x: wanted.x * bounds.width, y: wanted.y * bounds.height), barSize: barSize,
                                         bounds: bounds.size, insets: insets, housing: housing)
-            barHost.view.frame = CGRect(x: center.x - barSize.width / 2, y: center.y - barSize.height / 2,
-                                        width: barSize.width, height: barSize.height)
+            placeBar(CGRect(x: center.x - barSize.width / 2, y: center.y - barSize.height / 2,
+                            width: barSize.width, height: barSize.height))
         }
-        barMoved()
         layoutContent()
         fitButton.frame = CGRect(x: canvas.frame.maxX - 52, y: canvas.frame.minY + 8, width: 44, height: 44)
         view.bringSubviewToFront(fitButton)
@@ -274,24 +294,13 @@ final class DesktopViewController: UIViewController {
                             })
     }
 
-    private var announcedBarFrame = CGRect.null
-    private var barAccessibilityPending = false
-
-    /// The bar is moved as a whole (its hosting view's frame), which SwiftUI's accessibility
-    /// elements inside it don't notice: they kept the screen frame from before the move, so
-    /// VoiceOver, Switch Control (and the UI tests) went for where the bar had been. Once the
-    /// bar has moved, it's laid out again and assistive technologies are told.
-    private func barMoved() {
-        let frame = barHost.view.frame
-        guard frame != announcedBarFrame, !barAccessibilityPending else { return }
-        barAccessibilityPending = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.barAccessibilityPending = false
-            self.announcedBarFrame = self.barHost.view.frame
-            self.barHost.view.setNeedsLayout()
-            self.barHost.view.layoutIfNeeded()
-            UIAccessibility.post(notification: .layoutChanged, argument: nil)
+    /// Where the bar goes (in the view's coordinates); animated while its content changes.
+    private func placeBar(_ frame: CGRect) {
+        guard barPlacement.frame != frame else { return }
+        if animatesBar && barPlacement.frame != .zero {
+            withAnimation(.snappy(duration: 0.25)) { barPlacement.frame = frame }
+        } else {
+            barPlacement.frame = frame
         }
     }
 
@@ -550,13 +559,12 @@ final class DesktopViewController: UIViewController {
     private func relayoutBar() {
         let layout = { [weak self] in
             guard let self else { return }
-            self.barHost.view.invalidateIntrinsicContentSize()
+            self.barSizer.view.invalidateIntrinsicContentSize()
             self.view.setNeedsLayout()
-            UIView.animate(withDuration: 0.25, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
-                self.view.layoutIfNeeded()
-            } completion: { _ in
-                self.updateAccessibilityValue()
-            }
+            self.animatesBar = true
+            self.view.layoutIfNeeded()
+            self.animatesBar = false
+            self.updateAccessibilityValue()
         }
         layout()
         DispatchQueue.main.async(execute: layout)
@@ -607,7 +615,8 @@ final class DesktopViewController: UIViewController {
         actions.moveBar = { [weak self] translation in
             guard let self else { return }
             let bounds = self.view.bounds
-            let start = self.barDragStart ?? CGPoint(x: self.barHost.view.center.x / bounds.width, y: self.barHost.view.center.y / bounds.height)
+            let bar = self.barPlacement.frame
+            let start = self.barDragStart ?? CGPoint(x: bar.midX / bounds.width, y: bar.midY / bounds.height)
             self.barDragStart = start
             let center = CGPoint(x: start.x + translation.width / bounds.width, y: start.y + translation.height / bounds.height)
             if self.session.gamepadShown { self.gamepadBarCenter = center } else { self.barCenter = center }
@@ -619,7 +628,8 @@ final class DesktopViewController: UIViewController {
             self.barDragStart = nil
             // Remember where it ended up (clamped inside the screen), with the controller up or not
             let bounds = self.view.bounds
-            let center = CGPoint(x: self.barHost.view.center.x / bounds.width, y: self.barHost.view.center.y / bounds.height)
+            let bar = self.barPlacement.frame
+            let center = CGPoint(x: bar.midX / bounds.width, y: bar.midY / bounds.height)
             if self.session.gamepadShown {
                 self.gamepadBarCenter = center
                 UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisGamepadBarCenter2")
@@ -652,7 +662,7 @@ final class DesktopViewController: UIViewController {
         lines[0] += String(format: " · safe %.1f %.1f %.1f %.1f", safe.top, safe.left, safe.bottom, safe.right)
         let picture = videoRect(in: view.bounds.size)
         lines[0] += String(format: " · picture %.1f %.1f %.1f %.1f", picture.minX, picture.minY, picture.width, picture.height)
-        let bar = barHost.view.frame
+        let bar = barPlacement.frame
         lines[0] += String(format: " · bar frame %.1f %.1f %.1f %.1f · screen %.1f %.1f", bar.minX, bar.minY, bar.width, bar.height,
                            view.bounds.width, view.bounds.height)
         if let keyRow {
@@ -1056,5 +1066,35 @@ extension DesktopViewController: GamepadMouseOutput {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: hide)
         toastCount += 1
         updateAccessibilityValue()
+    }
+}
+
+/// Where the control bar goes, set by DesktopViewController.
+@Observable
+final class BarPlacement {
+    var frame = CGRect.zero
+}
+
+/// The control bar at its place in a view that covers the screen.
+struct PlacedControlBar: View {
+    let session: DesktopSession
+    let placement: BarPlacement
+
+    var body: some View {
+        ControlBar(session: session)
+            .frame(width: placement.frame.width, height: placement.frame.height)
+            .position(x: placement.frame.midX, y: placement.frame.midY)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
+    }
+}
+
+/// Holds the bar's screen-covering hosting view: only touches on the bar go to it.
+final class BarPassThroughView: UIView {
+    var placement: BarPlacement?
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let placement, placement.frame.contains(point) else { return nil }
+        return super.hitTest(point, with: event)
     }
 }
