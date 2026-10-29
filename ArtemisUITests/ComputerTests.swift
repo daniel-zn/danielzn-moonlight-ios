@@ -120,7 +120,15 @@ final class ComputerTests: XCTestCase {
         let old = field.value as? String ?? ""
         let count = old == placeholder ? 0 : old.count
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count) + name)
-        XCTAssertEqual(field.value as? String ?? "", name.isEmpty ? placeholder : name, "\(tag): the name field")
+        // An emptied field reads as "" or as its placeholder, and the value follows the typing a
+        // moment later: wait for it
+        let typed = { () -> Bool in
+            let value = field.value as? String ?? ""
+            return name.isEmpty ? value.isEmpty || value == placeholder : value == name
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !typed() && Date() < deadline { usleep(100_000) }
+        XCTAssertTrue(typed(), "\(tag): the name field reads \"\(field.value as? String ?? "")\", not \"\(name)\"")
         if !name.isEmpty { shot("\(tag)-parity-2-rename") }
         // XCTest's typing hides the keyboard, which comes back a moment later and moves the alert
         let keyboard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: app.keyboards.firstMatch)
