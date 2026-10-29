@@ -341,11 +341,16 @@ final class OnScreenGamepadTests: XCTestCase {
         XCTAssertEqual(folded.value as? String, "Faded", "\(tag): didn't fade after 5 s")
         XCTAssertTrue(folded.isHittable, "\(tag): not tappable faded")
         shot("\(tag)-2-faded")
-        // A touch (a short drag that doesn't unfold it) brings the glass back
+        // A touch (a short drag that doesn't unfold it) brings the glass back, and the drag moves
+        // the faded bar at once (not only a second drag after the glass came back)
+        let desktop = app.otherElements["desktop"]
+        let before = barState(desktop).bar
         let start = folded.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -40, dy: 0)))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: -120, dy: 0)))
         sleep(1)
         XCTAssertEqual(folded.value as? String ?? "", "", "\(tag): a touch didn't bring the glass back")
+        let after = barState(desktop).bar
+        XCTAssertLessThan(after.midX, before.midX - 80, "\(tag): the faded bar didn't move with the drag (\(before) → \(after))")
         sleep(7)
         XCTAssertEqual(folded.value as? String, "Faded", "\(tag): didn't fade again")
         // Faded, a tap still unfolds the bar
