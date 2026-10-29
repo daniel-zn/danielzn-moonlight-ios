@@ -149,28 +149,30 @@ final class ControllerTests: XCTestCase {
     }
 
     /// Select (the Xbox controller's View, a PlayStation controller's Share / Create) reaches the
-    /// PC as the Xbox Back button, as do Start / Menu, A and a stick's click, each on its own.
-    /// (The virtual controller has no Xbox / Home button to press.)
+    /// PC as the Xbox Back button, as do Start / Menu and A, each on its own; during the session
+    /// controller buttons go to the GameController framework only, not to UIKit's navigation.
+    /// (The virtual controller has no Xbox / Home button to press, nor stick clicks it reports.)
     func testConnectedControllerButtons() {
-        let (app, status, arrival, sent) = connected("press options;press menu;press a;press l3")
+        let (app, status, arrival, sent) = connected("press options;press menu;press a")
         // The PC is told the controller has a Back button (0x0020) and Start (0x0010)
         let flags = arrival.flatMap { UInt32($0.split(separator: " ").last?.dropFirst(2) ?? "", radix: 16) } ?? 0
         XCTAssertEqual(flags & 0x0020, 0x0020, "no Back in the arrival: \(arrival ?? "none")")
         XCTAssertEqual(flags & 0x0010, 0x0010, "no Start in the arrival: \(arrival ?? "none")")
         XCTAssertEqual(sent, ["pad 0x0020", "pad 0x0000", // Select: Back
                               "pad 0x0010", "pad 0x0000", // Start / Menu
-                              "pad 0x1000", "pad 0x0000", // A
-                              "pad 0x0040", "pad 0x0000"], // the left stick's click
+                              "pad 0x1000", "pad 0x0000"], // A
                        "sent: \(sent)")
         XCTAssertTrue(status.contains("gamepad mouse off"), "status: \(status)")
+        XCTAssertTrue(status.contains("controller events game controller only"), "status: \(status)")
         shot("\(appearance)-portrait-L-controller-3-select")
         app.terminate()
     }
 
-    /// Start + Select together: both reach the PC (no combo turns them into something else).
+    /// Select held, then Start: on a controller without an Xbox / Home button (as this one) the
+    /// pair is the Guide button, upstream's stand-in; Select alone is Back again after.
     func testConnectedControllerStartAndSelect() {
-        let (app, _, _, sent) = connected("down options;down menu;up menu;up options")
-        XCTAssertEqual(sent, ["pad 0x0020", "pad 0x0030", "pad 0x0020", "pad 0x0000"], "sent: \(sent)")
+        let (app, _, _, sent) = connected("down options;down menu;up menu;up options;press options")
+        XCTAssertEqual(sent, ["pad 0x0020", "pad 0x0420", "pad 0x0020", "pad 0x0000", "pad 0x0020", "pad 0x0000"], "sent: \(sent)")
         app.terminate()
     }
 

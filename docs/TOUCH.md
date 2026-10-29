@@ -52,7 +52,11 @@ trackpad (above the home indicator).
   reset (while zoomed), disconnect (one tap ends the session, no confirming menu). There's no right-click
   button: a two-finger tap or a press and hold right-clicks. Room is left for a microphone button (mic passthrough
   is a later phase).
-- In landscape it can be dragged anywhere inside the safe area (it remembers where) and folded into a small round
+- In landscape it can be dragged anywhere on the screen, up to 12 points from each edge (clear of the rounded
+  corners), except beside the camera (the Dynamic Island or notch, on one side halfway up), where it stops at the
+  safe area; it remembers where, keeps that after a rotation (turned over, the camera's side changes and the bar
+  moves out of it), and unfolded next to an edge it shifts back inside (`testBarReachesEveryEdge`,
+  `testBarEdgeAfterRotation`). It can be folded into a small round
   button; Settings › Touch & Pointer › Show control bar decides whether a session starts unfolded. Folded and
   left untouched for 5 seconds, the button fades from Liquid Glass to a flat, faint disc so it hides over the
   desktop (its accessibility value says "Faded"); a touch brings the glass back at once and the 5 seconds start
@@ -227,10 +231,19 @@ changes from run to run.)
 
 A controller connected to the iPhone (Xbox, PlayStation, MFi) goes to the PC as a gamepad (upstream's
 `ControllerSupport`; upstream's on-screen controls are never shown, Artemis has its own above). Start, Select, LB
-and RB together disconnect.
+and RB together disconnect. Select (the Xbox controller's View, a PlayStation controller's Share / Create) is the
+Xbox Back button; on a controller without an Xbox / Home button, Select with Start is the Guide button (upstream's
+stand-in). During a session the controller's buttons go to the GameController framework only (a
+`GCEventInteraction` on the session's view), not to UIKit's controller navigation, which the app otherwise opts into
+(`GCSupportsControllerUserInteraction`); system gestures on every button are turned off, as upstream does.
+
+The UI tests connect a `GCVirtualController` (`-ArtemisDemoController "<steps>"`) that the real `ControllerSupport`
+reads; what it would send goes to the demo's record (`ControllerTests/testConnectedController*`). The virtual
+controller has no Home button, and no D-pad next to a left stick.
 
 **As the mouse.** Hold Start (Menu) for 0.75 s to switch the controller to the mouse; a notice says "Controller
-mouse on". Hold it again to switch back. While it's the mouse, nothing goes to the PC as a gamepad.
+mouse on". Hold it again to switch back. While it's the mouse, nothing goes to the PC as a gamepad (Select does
+nothing, as in the Mac app).
 
 | Control | Result |
 |---|---|

@@ -360,9 +360,13 @@ final class OnScreenGamepadTests: XCTestCase {
 
     // MARK: The bar at the edges
 
-    /// Landscape: the bar goes all the way to each edge of the safe area (within 2 pt) and never
-    /// past it, unfolded and folded, with the on-screen controller hidden and shown; unfolded
-    /// next to an edge it shifts back inside.
+    /// The floating bar's margin from the screen's edges (DesktopViewController.barEdgeMargin).
+    private let barEdgeMargin: CGFloat = 12
+
+    /// Landscape: the bar goes all the way to each edge of the screen (12 pt in, clear of the
+    /// rounded corners) and never past it, unfolded and folded, with the on-screen controller
+    /// hidden and shown; beside the camera it stops at the safe area; unfolded next to an edge it
+    /// shifts back inside.
     func testBarReachesEveryEdge() {
         let tag = "\(appearance)-landscape-bar-edges"
         let (app, desktop) = connect(orientation: .landscapeLeft)
@@ -378,11 +382,19 @@ final class OnScreenGamepadTests: XCTestCase {
                     XCTAssertTrue(control(app, "bar.unfold").waitForExistence(timeout: 3), "\(name): didn't fold")
                 }
                 for edge in ["left", "top", "right", "bottom"] {
-                    dragBar(app, desktop, to: edge, folded: folded)
+                    dragBar(app, to: edge, folded: folded)
                     checkBar(desktop, at: [edge], "\(name) \(edge)")
                 }
-                // In the bottom right corner now: both edges at once
-                dragBar(app, desktop, to: "right", folded: folded)
+                // Halfway up: the camera's side (the left, the phone turned this way) keeps the bar
+                // in the safe area; the other side doesn't
+                dragBar(app, to: "middle", folded: folded)
+                checkBar(desktop, at: ["right"], "\(name) middle right")
+                dragBar(app, to: "left", folded: folded)
+                checkBar(desktop, at: ["left"], "\(name) middle left (camera)")
+                shot("\(name)-camera-side")
+                // In the bottom right corner: both edges at once
+                dragBar(app, to: "bottom", folded: folded)
+                dragBar(app, to: "right", folded: folded)
                 checkBar(desktop, at: ["right", "bottom"], "\(name) corner")
                 shot("\(name)-corner")
                 if folded {
@@ -397,13 +409,14 @@ final class OnScreenGamepadTests: XCTestCase {
         app.terminate()
     }
 
-    /// The bar at the right edge stays at the right edge when the phone turns over to the other
-    /// landscape, docks at the bottom upright, and comes back to the right edge in landscape.
+    /// The bar in the top right corner stays there when the phone turns over to the other
+    /// landscape, docks at the bottom upright, and comes back to the corner in landscape. Halfway
+    /// up the right side, turning over puts the camera there: the bar moves into the safe area.
     func testBarEdgeAfterRotation() {
         let tag = "\(appearance)-landscape-bar-rotation"
         let (app, desktop) = connect(orientation: .landscapeLeft)
-        dragBar(app, desktop, to: "right", folded: false)
-        dragBar(app, desktop, to: "top", folded: false)
+        dragBar(app, to: "right", folded: false)
+        dragBar(app, to: "top", folded: false)
         checkBar(desktop, at: ["right", "top"], "\(tag) before")
         XCUIDevice.shared.orientation = .landscapeRight
         sleep(2)
@@ -417,6 +430,12 @@ final class OnScreenGamepadTests: XCTestCase {
         sleep(2)
         checkBar(desktop, at: ["right", "top"], "\(tag) back")
         shot("\(tag)-back")
+        dragBar(app, to: "middle", folded: false)
+        checkBar(desktop, at: ["right"], "\(tag) middle right")
+        XCUIDevice.shared.orientation = .landscapeRight
+        sleep(2)
+        checkBar(desktop, at: ["right"], "\(tag) middle right turned over (camera)")
+        shot("\(tag)-camera-side")
         app.terminate()
     }
 
@@ -436,8 +455,9 @@ final class OnScreenGamepadTests: XCTestCase {
                 CGRect(x: bar[0], y: bar[1], width: bar[2], height: bar[3]))
     }
 
-    /// Drags the bar (by its grip, or the folded button) as far as the screen goes towards an edge.
-    private func dragBar(_ app: XCUIApplication, _ desktop: XCUIElement, to edge: String, folded: Bool) {
+    /// Drags the bar (by its grip, or the folded button) as far as the screen goes towards an
+    /// edge, or to halfway up ("middle").
+    private func dragBar(_ app: XCUIApplication, to edge: String, folded: Bool) {
         let handle = control(app, folded ? "bar.unfold" : "bar.grip")
         XCTAssertTrue(handle.waitForExistence(timeout: 3), "no bar handle")
         let from = center(handle)
@@ -447,6 +467,7 @@ final class OnScreenGamepadTests: XCTestCase {
         case "left": to.x = window.minX + 3
         case "right": to.x = window.maxX - 3
         case "top": to.y = window.minY + 3
+        case "middle": to.y = window.midY
         default: to.y = window.maxY - 3
         }
         let origin = app.coordinate(withNormalizedOffset: .zero)
@@ -455,12 +476,28 @@ final class OnScreenGamepadTests: XCTestCase {
         sleep(1)
     }
 
-    /// The bar inside the safe area, and at these edges of it (within 2 pt).
+    /// The camera's side in landscape: the left with the phone turned to the left.
+    private var cameraSide: String? {
+        switch XCUIDevice.shared.orientation {
+        case .landscapeLeft: return "left"
+        case .landscapeRight: return "right"
+        default: return nil
+        }
+    }
+
+    /// The bar on the screen, at least `barEdgeMargin` from each edge and out of the camera's
+    /// safe-area inset beside it; and at these edges (within 2 pt): the margin from the screen's
+    /// edge, or beside the camera, the safe area's edge.
     private func checkBar(_ desktop: XCUIElement, at edges: [String], _ tag: String) {
         let (size, safe, bar) = barState(desktop)
-        let limits = CGRect(x: safe.left, y: safe.top, width: size.width - safe.left - safe.right,
-                            height: size.height - safe.top - safe.bottom)
-        XCTAssertTrue(limits.insetBy(dx: -0.5, dy: -0.5).contains(bar), "\(tag): \(bar) outside the safe area \(limits)")
+        let besideCamera = abs(bar.midY - size.height / 2) < bar.height / 2 + 124
+        func limit(_ edge: String) -> CGFloat {
+            let inset = edge == "left" ? safe.left : edge == "right" ? safe.right : 0
+            return edge == cameraSide && besideCamera ? max(inset, barEdgeMargin) : barEdgeMargin
+        }
+        let limits = CGRect(x: limit("left"), y: barEdgeMargin, width: size.width - limit("left") - limit("right"),
+                            height: size.height - 2 * barEdgeMargin)
+        XCTAssertTrue(limits.insetBy(dx: -0.5, dy: -0.5).contains(bar), "\(tag): \(bar) outside \(limits)")
         for edge in edges {
             let gap: CGFloat
             switch edge {
@@ -469,7 +506,7 @@ final class OnScreenGamepadTests: XCTestCase {
             case "top": gap = bar.minY - limits.minY
             default: gap = limits.maxY - bar.maxY
             }
-            XCTAssertLessThanOrEqual(abs(gap), 2, "\(tag): \(gap) pt from the \(edge) edge (bar \(bar), safe area \(limits))")
+            XCTAssertLessThanOrEqual(abs(gap), 2, "\(tag): \(gap) pt from the \(edge) edge (bar \(bar), limits \(limits), safe \(safe))")
         }
     }
 

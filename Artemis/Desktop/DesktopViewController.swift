@@ -9,6 +9,7 @@
 //  StreamFrameViewController keeps the connection; this sends the input.
 //
 
+import GameController
 import SwiftUI
 import UIKit
 
@@ -86,6 +87,13 @@ final class DesktopViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemGroupedBackground
         interpreter.delegate = self
+        // The app opts into controller UI navigation (GCSupportsControllerUserInteraction): during
+        // a session every controller button goes to ControllerSupport alone, none to UIKit (which
+        // could take Select / Options or B for its own navigation)
+        let controllerEvents = GCEventInteraction()
+        controllerEvents.handledEventTypes = .gamepad
+        controllerEvents.receivesEventsInView = false
+        view.addInteraction(controllerEvents)
 
         canvas.backgroundColor = .black
         canvas.clipsToBounds = true
@@ -227,12 +235,11 @@ final class DesktopViewController: UIViewController {
             let wanted = session.gamepadShown
                 ? gamepadBarCenter ?? PadLayout.barCenter(area: area, bounds: bounds.size, barSize: barSize, scale: padSize)
                 : barCenter
-            let minX = insets.left + barSize.width / 2 + 8
-            let maxX = bounds.width - insets.right - barSize.width / 2 - 8
-            let minY = max(insets.top, 8) + barSize.height / 2
-            let maxY = bounds.height - max(insets.bottom, 8) - barSize.height / 2
-            let center = CGPoint(x: min(max(wanted.x * bounds.width, minX), max(minX, maxX)),
-                                 y: min(max(wanted.y * bounds.height, minY), max(minY, maxY)))
+            let orientation = view.window?.windowScene?.effectiveGeometry.interfaceOrientation
+            let housing: CGRectEdge? = insets.left < 1 && insets.right < 1 ? nil
+                : orientation == .landscapeRight ? .minXEdge : orientation == .landscapeLeft ? .maxXEdge : nil
+            let center = Self.barCenter(CGPoint(x: wanted.x * bounds.width, y: wanted.y * bounds.height), barSize: barSize,
+                                        bounds: bounds.size, insets: insets, housing: housing)
             barHost.view.bounds = CGRect(origin: .zero, size: barSize)
             barHost.view.center = center
         }
@@ -255,7 +262,35 @@ final class DesktopViewController: UIViewController {
     override func viewWillTransition(to size: CGSize, with coordinator: any UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { _ in self.view.setNeedsLayout(); self.view.layoutIfNeeded() },
-                            completion: { _ in self.updateAccessibilityValue() })
+                            completion: { _ in
+                                // Turned over, the camera's side changed: the bar's limits with it
+                                self.view.setNeedsLayout()
+                                self.view.layoutIfNeeded()
+                                self.updateAccessibilityValue()
+                            })
+    }
+
+    /// The floating bar's margin from the screen's edges (landscape): a capsule or the round
+    /// folded bar this far in stays clear of the screen's rounded corners.
+    static let barEdgeMargin: CGFloat = 12
+    /// Half the height beside the camera (the Dynamic Island or the notch) that the bar keeps
+    /// out of, from the middle of that side.
+    static let housingHalfHeight: CGFloat = 124
+
+    /// Where the floating bar's centre goes for a wanted one: anywhere on the screen up to its
+    /// edges (less `barEdgeMargin`), except beside the camera (`housing`: the side it's on in
+    /// landscape), where the bar stays inside the safe area.
+    static func barCenter(_ wanted: CGPoint, barSize: CGSize, bounds: CGSize, insets: UIEdgeInsets, housing: CGRectEdge?) -> CGPoint {
+        let half = CGSize(width: barSize.width / 2, height: barSize.height / 2)
+        let minY = barEdgeMargin + half.height, maxY = bounds.height - barEdgeMargin - half.height
+        let y = min(max(wanted.y, minY), max(minY, maxY))
+        let besideHousing = abs(y - bounds.height / 2) < half.height + housingHalfHeight
+        let left = housing == .minXEdge && besideHousing ? max(insets.left, barEdgeMargin) : barEdgeMargin
+        let right = housing == .maxXEdge && besideHousing ? max(insets.right, barEdgeMargin) : barEdgeMargin
+        let minX = left + half.width, maxX = bounds.width - right - half.width
+        // Too wide to fit (never in practice): centred between the limits
+        let x = minX <= maxX ? min(max(wanted.x, minX), maxX) : (minX + maxX) / 2
+        return CGPoint(x: x, y: y)
     }
 
     /// A mouse moved the pointer (StreamView): the trackpad continues from there.
@@ -585,6 +620,8 @@ final class DesktopViewController: UIViewController {
                             gamepadMouse.isActive ? "on" : "off")]
         lines[0] += " · edges " + Self.describe(deferredEdges)
         lines[0] += " · on-screen controller " + (session.gamepadShown ? "shown" : "hidden")
+        let exclusive = view.interactions.contains { ($0 as? GCEventInteraction).map { $0.handledEventTypes.contains(.gamepad) && !$0.receivesEventsInView } ?? false }
+        lines[0] += " · controller events " + (exclusive ? "game controller only" : "shared")
         let safe = view.safeAreaInsets
         lines[0] += String(format: " · safe %.1f %.1f %.1f %.1f", safe.top, safe.left, safe.bottom, safe.right)
         let picture = videoRect(in: view.bounds.size)
