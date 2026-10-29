@@ -305,7 +305,7 @@ final class DemoControllerScript: NSObject, ControllerSupportDelegate {
             }
         }
         // As a session does (StreamFrameViewController): the controllers, then the gamepad mouse
-        let support = ControllerSupport(config: StreamConfiguration(), delegate: self)
+        guard let support = ControllerSupport(config: StreamConfiguration(), delegate: self) else { return }
         support.gamepadFilter = mouse
         self.support = support
         let configuration = GCVirtualController.Configuration()

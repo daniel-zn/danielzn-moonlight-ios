@@ -422,14 +422,14 @@ final class OnScreenGamepadTests: XCTestCase {
 
     /// The screen's size, its safe area and the bar's frame, as the desktop reports them.
     private func barState(_ desktop: XCUIElement) -> (size: CGSize, safe: UIEdgeInsets, bar: CGRect) {
-        let status = status(desktop)
+        let text = self.status(desktop)
         func numbers(after label: String, _ count: Int) -> [CGFloat] {
-            guard let range = status.range(of: label + " ") else { return [] }
-            return status[range.upperBound...].split(separator: " ").prefix(count).compactMap { Double($0) }.map { CGFloat($0) }
+            guard let range = text.range(of: label + " ") else { return [] }
+            return text[range.upperBound...].split(separator: " ").prefix(count).compactMap { Double($0) }.map { CGFloat($0) }
         }
         let safe = numbers(after: "safe", 4), bar = numbers(after: "bar frame", 4), size = numbers(after: "screen", 2)
         guard safe.count == 4, bar.count == 4, size.count == 2 else {
-            XCTFail("no layout in \(status)")
+            XCTFail("no layout in \(text)")
             return (.zero, .zero, .zero)
         }
         return (CGSize(width: size[0], height: size[1]), UIEdgeInsets(top: safe[0], left: safe[1], bottom: safe[2], right: safe[3]),
