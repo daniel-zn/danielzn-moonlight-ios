@@ -468,12 +468,14 @@ final class OnScreenGamepadTests: XCTestCase {
         let from = center(handle)
         let window = app.windows.firstMatch.frame
         var to = from
+        // The finger stays 20 pt inside the screen (lifting it on the very edge is the system's,
+        // and threw XCUITest's idea of where the bar is); that's still past where the bar stops
         switch edge {
-        case "left": to.x = window.minX + 3
-        case "right": to.x = window.maxX - 3
-        case "top": to.y = window.minY + 3
+        case "left": to.x = window.minX + 20
+        case "right": to.x = window.maxX - 20
+        case "top": to.y = window.minY + 20
         case "middle": to.y = window.midY
-        default: to.y = window.maxY - 3
+        default: to.y = window.maxY - 20
         }
         let origin = app.coordinate(withNormalizedOffset: .zero)
         origin.withOffset(CGVector(dx: from.x, dy: from.y))
