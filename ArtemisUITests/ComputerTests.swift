@@ -110,12 +110,14 @@ final class ComputerTests: XCTestCase {
     /// Sets the name in the open rename alert and confirms it. The alert focuses its field itself,
     /// with the cursor after the name: the old name's deletes and the new name go in one typing,
     /// with no tap on the field. Rename is tapped once the keyboard is back and it holds still.
+    /// The waits are long (they end as soon as the alert gets there): on a loaded Mac the
+    /// alert's field took over 5 s to be focused.
     private func rename(to name: String, in app: XCUIApplication, _ tag: String) {
         let alert = app.alerts.firstMatch
-        XCTAssertTrue(alert.waitForExistence(timeout: 5), "\(tag): no rename alert")
+        XCTAssertTrue(alert.waitForExistence(timeout: 20), "\(tag): no rename alert")
         let field = alert.textFields.firstMatch
         let focused = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasKeyboardFocus == true"), object: field)
-        XCTAssertEqual(XCTWaiter.wait(for: [focused], timeout: 5), .completed, "\(tag): the name field isn't focused")
+        XCTAssertEqual(XCTWaiter.wait(for: [focused], timeout: 20), .completed, "\(tag): the name field isn't focused")
         let placeholder = field.placeholderValue ?? ""
         let old = field.value as? String ?? ""
         let count = old == placeholder ? 0 : old.count
@@ -126,18 +128,18 @@ final class ComputerTests: XCTestCase {
             let value = field.value as? String ?? ""
             return name.isEmpty ? value.isEmpty || value == placeholder : value == name
         }
-        let deadline = Date().addingTimeInterval(2)
+        let deadline = Date().addingTimeInterval(10)
         while !typed() && Date() < deadline { usleep(100_000) }
         XCTAssertTrue(typed(), "\(tag): the name field reads \"\(field.value as? String ?? "")\", not \"\(name)\"")
         if !name.isEmpty { shot("\(tag)-parity-2-rename") }
         // XCTest's typing hides the keyboard, which comes back a moment later and moves the alert
         let keyboard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: app.keyboards.firstMatch)
-        XCTAssertEqual(XCTWaiter.wait(for: [keyboard], timeout: 5), .completed, "\(tag): the keyboard didn't come back after typing")
+        XCTAssertEqual(XCTWaiter.wait(for: [keyboard], timeout: 20), .completed, "\(tag): the keyboard didn't come back after typing")
         let confirm = alert.buttons["rename.confirm"].firstMatch
-        XCTAssertTrue(settled(confirm), "\(tag): Rename doesn't hold still on screen")
+        XCTAssertTrue(settled(confirm, timeout: 20), "\(tag): Rename doesn't hold still on screen")
         confirm.tap()
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: alert)
-        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed, "\(tag): the rename alert didn't close")
+        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 20), .completed, "\(tag): the rename alert didn't close")
     }
 
     private func disconnect(_ app: XCUIApplication) {
