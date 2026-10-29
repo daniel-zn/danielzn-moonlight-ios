@@ -243,9 +243,10 @@ final class DesktopViewController: UIViewController {
                 : orientation == .landscapeRight ? .minXEdge : orientation == .landscapeLeft ? .maxXEdge : nil
             let center = Self.barCenter(CGPoint(x: wanted.x * bounds.width, y: wanted.y * bounds.height), barSize: barSize,
                                         bounds: bounds.size, insets: insets, housing: housing)
-            barHost.view.bounds = CGRect(origin: .zero, size: barSize)
-            barHost.view.center = center
+            barHost.view.frame = CGRect(x: center.x - barSize.width / 2, y: center.y - barSize.height / 2,
+                                        width: barSize.width, height: barSize.height)
         }
+        barMoved()
         layoutContent()
         fitButton.frame = CGRect(x: canvas.frame.maxX - 52, y: canvas.frame.minY + 8, width: 44, height: 44)
         view.bringSubviewToFront(fitButton)
@@ -271,6 +272,27 @@ final class DesktopViewController: UIViewController {
                                 self.view.layoutIfNeeded()
                                 self.updateAccessibilityValue()
                             })
+    }
+
+    private var announcedBarFrame = CGRect.null
+    private var barAccessibilityPending = false
+
+    /// The bar is moved as a whole (its hosting view's frame), which SwiftUI's accessibility
+    /// elements inside it don't notice: they kept the screen frame from before the move, so
+    /// VoiceOver, Switch Control (and the UI tests) went for where the bar had been. Once the
+    /// bar has moved, it's laid out again and assistive technologies are told.
+    private func barMoved() {
+        let frame = barHost.view.frame
+        guard frame != announcedBarFrame, !barAccessibilityPending else { return }
+        barAccessibilityPending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.barAccessibilityPending = false
+            self.announcedBarFrame = self.barHost.view.frame
+            self.barHost.view.setNeedsLayout()
+            self.barHost.view.layoutIfNeeded()
+            UIAccessibility.post(notification: .layoutChanged, argument: nil)
+        }
     }
 
     /// The floating bar's margin from the screen's edges (landscape): a capsule or the round
