@@ -387,7 +387,8 @@ final class OnScreenGamepadTests: XCTestCase {
                     XCTAssertTrue(control(app, "bar.unfold").waitForExistence(timeout: 3), "\(name): didn't fold")
                 }
                 for edge in ["left", "top", "right", "bottom"] {
-                    dragBar(app, to: edge, folded: folded)
+                    // The finger lifts on the screen's edge
+                    dragBar(app, to: edge, folded: folded, inset: 3)
                     checkBar(desktop, at: [edge], "\(name) \(edge)")
                 }
                 // Halfway up: the camera's side (the left, the phone turned this way) keeps the bar
@@ -462,20 +463,19 @@ final class OnScreenGamepadTests: XCTestCase {
 
     /// Drags the bar (by its grip, or the folded button) as far as the screen goes towards an
     /// edge, or to halfway up ("middle").
-    private func dragBar(_ app: XCUIApplication, to edge: String, folded: Bool) {
+    private func dragBar(_ app: XCUIApplication, to edge: String, folded: Bool, inset: CGFloat = 20) {
         let handle = control(app, folded ? "bar.unfold" : "bar.grip")
         XCTAssertTrue(handle.waitForExistence(timeout: 3), "no bar handle")
         let from = center(handle)
         let window = app.windows.firstMatch.frame
         var to = from
-        // The finger stays 20 pt inside the screen (lifting it on the very edge is the system's,
-        // and threw XCUITest's idea of where the bar is); that's still past where the bar stops
+        // The finger lifts `inset` from the screen's edge (3: on the edge), past where the bar stops
         switch edge {
-        case "left": to.x = window.minX + 20
-        case "right": to.x = window.maxX - 20
-        case "top": to.y = window.minY + 20
+        case "left": to.x = window.minX + inset
+        case "right": to.x = window.maxX - inset
+        case "top": to.y = window.minY + inset
         case "middle": to.y = window.midY
-        default: to.y = window.maxY - 20
+        default: to.y = window.maxY - inset
         }
         let origin = app.coordinate(withNormalizedOffset: .zero)
         origin.withOffset(CGVector(dx: from.x, dy: from.y))
@@ -492,11 +492,34 @@ final class OnScreenGamepadTests: XCTestCase {
         }
     }
 
+    /// Where assistive technologies (and XCUITest) find the bar matches where the app has it:
+    /// the folded button is the bar's frame, the open bar's grip lies at its left end. Waits up
+    /// to 2 s for them to be told.
+    private func checkBarAccessibility(_ desktop: XCUIElement, bar: CGRect, _ tag: String) {
+        let app = XCUIApplication()
+        let folded = status(desktop).contains("bar folded")
+        let element = control(app, folded ? "bar.unfold" : "bar.grip")
+        func matches() -> Bool {
+            let frame = element.frame
+            if folded {
+                return abs(frame.minX - bar.minX) <= 1.5 && abs(frame.minY - bar.minY) <= 1.5
+                    && abs(frame.width - bar.width) <= 1.5 && abs(frame.height - bar.height) <= 1.5
+            }
+            return bar.insetBy(dx: -1.5, dy: -1.5).contains(frame) && frame.minX - bar.minX < 20
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !matches() && Date() < deadline {
+            usleep(200_000)
+        }
+        XCTAssertTrue(matches(), "\(tag): \(folded ? "the folded bar" : "the grip") is at \(element.frame) for assistive technologies, the bar at \(bar)")
+    }
+
     /// The bar on the screen, at least `barEdgeMargin` from each edge and out of the camera's
     /// safe-area inset beside it; and at these edges (within 2 pt): the margin from the screen's
     /// edge, or beside the camera, the safe area's edge.
     private func checkBar(_ desktop: XCUIElement, at edges: [String], _ tag: String) {
         let (size, safe, bar) = barState(desktop)
+        checkBarAccessibility(desktop, bar: bar, tag)
         let besideCamera = abs(bar.midY - size.height / 2) < bar.height / 2 + 124
         func limit(_ edge: String) -> CGFloat {
             let inset = edge == "left" ? safe.left : edge == "right" ? safe.right : 0
