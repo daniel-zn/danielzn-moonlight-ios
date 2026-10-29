@@ -494,6 +494,8 @@ final class DesktopViewController: UIViewController {
             self.view.setNeedsLayout()
             UIView.animate(withDuration: 0.25, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
                 self.view.layoutIfNeeded()
+            } completion: { _ in
+                self.updateAccessibilityValue()
             }
         }
         layout()
@@ -565,6 +567,7 @@ final class DesktopViewController: UIViewController {
                 self.barCenter = center
                 UserDefaults.standard.set(NSCoder.string(for: center), forKey: "ArtemisBarCenter")
             }
+            self.updateAccessibilityValue()
         }
         actions.setBarExpanded = { [weak self] expanded in
             self?.session.barExpanded = expanded
@@ -586,6 +589,9 @@ final class DesktopViewController: UIViewController {
         lines[0] += String(format: " · safe %.1f %.1f %.1f %.1f", safe.top, safe.left, safe.bottom, safe.right)
         let picture = videoRect(in: view.bounds.size)
         lines[0] += String(format: " · picture %.1f %.1f %.1f %.1f", picture.minX, picture.minY, picture.width, picture.height)
+        let bar = barHost.view.frame
+        lines[0] += String(format: " · bar frame %.1f %.1f %.1f %.1f · screen %.1f %.1f", bar.minX, bar.minY, bar.width, bar.height,
+                           view.bounds.width, view.bounds.height)
         if let keyRow {
             lines[0] += " · key highlights \(keyRow.highlightCount) · key down \(keyRow.highlightedKey ?? "none")"
         }

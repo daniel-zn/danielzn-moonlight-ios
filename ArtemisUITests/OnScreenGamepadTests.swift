@@ -358,6 +358,121 @@ final class OnScreenGamepadTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    // MARK: The bar at the edges
+
+    /// Landscape: the bar goes all the way to each edge of the safe area (within 2 pt) and never
+    /// past it, unfolded and folded, with the on-screen controller hidden and shown; unfolded
+    /// next to an edge it shifts back inside.
+    func testBarReachesEveryEdge() {
+        let tag = "\(appearance)-landscape-bar-edges"
+        let (app, desktop) = connect(orientation: .landscapeLeft)
+        for gamepad in [false, true] {
+            if gamepad {
+                app.buttons["bar.gamepad"].tap()
+                sleep(1)
+            }
+            for folded in [false, true] {
+                let name = "\(tag)-\(gamepad ? "controller" : "plain")-\(folded ? "folded" : "open")"
+                if folded {
+                    app.buttons["bar.fold"].tap()
+                    XCTAssertTrue(control(app, "bar.unfold").waitForExistence(timeout: 3), "\(name): didn't fold")
+                }
+                for edge in ["left", "top", "right", "bottom"] {
+                    dragBar(app, desktop, to: edge, folded: folded)
+                    checkBar(desktop, at: [edge], "\(name) \(edge)")
+                }
+                // In the bottom right corner now: both edges at once
+                dragBar(app, desktop, to: "right", folded: folded)
+                checkBar(desktop, at: ["right", "bottom"], "\(name) corner")
+                shot("\(name)-corner")
+                if folded {
+                    // Unfolded in the corner: the wider bar shifts back inside, still at both edges
+                    control(app, "bar.unfold").tap()
+                    XCTAssertTrue(app.buttons["bar.fold"].waitForExistence(timeout: 3), "\(name): didn't unfold")
+                    sleep(1)
+                    checkBar(desktop, at: ["right", "bottom"], "\(name) unfolded in the corner")
+                }
+            }
+        }
+        app.terminate()
+    }
+
+    /// The bar at the right edge stays at the right edge when the phone turns over to the other
+    /// landscape, docks at the bottom upright, and comes back to the right edge in landscape.
+    func testBarEdgeAfterRotation() {
+        let tag = "\(appearance)-landscape-bar-rotation"
+        let (app, desktop) = connect(orientation: .landscapeLeft)
+        dragBar(app, desktop, to: "right", folded: false)
+        dragBar(app, desktop, to: "top", folded: false)
+        checkBar(desktop, at: ["right", "top"], "\(tag) before")
+        XCUIDevice.shared.orientation = .landscapeRight
+        sleep(2)
+        checkBar(desktop, at: ["right", "top"], "\(tag) turned over")
+        XCUIDevice.shared.orientation = .portrait
+        sleep(2)
+        let upright = barState(desktop)
+        XCTAssertGreaterThan(upright.bar.width, upright.size.width - 40, "\(tag): not docked upright \(upright.bar)")
+        XCTAssertLessThanOrEqual(upright.bar.maxY, upright.size.height - upright.safe.bottom + 0.5, "\(tag): upright \(upright.bar)")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        sleep(2)
+        checkBar(desktop, at: ["right", "top"], "\(tag) back")
+        shot("\(tag)-back")
+        app.terminate()
+    }
+
+    /// The screen's size, its safe area and the bar's frame, as the desktop reports them.
+    private func barState(_ desktop: XCUIElement) -> (size: CGSize, safe: UIEdgeInsets, bar: CGRect) {
+        let status = status(desktop)
+        func numbers(after label: String, _ count: Int) -> [CGFloat] {
+            guard let range = status.range(of: label + " ") else { return [] }
+            return status[range.upperBound...].split(separator: " ").prefix(count).compactMap { Double($0) }.map { CGFloat($0) }
+        }
+        let safe = numbers(after: "safe", 4), bar = numbers(after: "bar frame", 4), size = numbers(after: "screen", 2)
+        guard safe.count == 4, bar.count == 4, size.count == 2 else {
+            XCTFail("no layout in \(status)")
+            return (.zero, .zero, .zero)
+        }
+        return (CGSize(width: size[0], height: size[1]), UIEdgeInsets(top: safe[0], left: safe[1], bottom: safe[2], right: safe[3]),
+                CGRect(x: bar[0], y: bar[1], width: bar[2], height: bar[3]))
+    }
+
+    /// Drags the bar (by its grip, or the folded button) as far as the screen goes towards an edge.
+    private func dragBar(_ app: XCUIApplication, _ desktop: XCUIElement, to edge: String, folded: Bool) {
+        let handle = control(app, folded ? "bar.unfold" : "bar.grip")
+        XCTAssertTrue(handle.waitForExistence(timeout: 3), "no bar handle")
+        let from = center(handle)
+        let window = app.windows.firstMatch.frame
+        var to = from
+        switch edge {
+        case "left": to.x = window.minX + 3
+        case "right": to.x = window.maxX - 3
+        case "top": to.y = window.minY + 3
+        default: to.y = window.maxY - 3
+        }
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        origin.withOffset(CGVector(dx: from.x, dy: from.y))
+            .press(forDuration: 0.1, thenDragTo: origin.withOffset(CGVector(dx: to.x, dy: to.y)), withVelocity: 1200, thenHoldForDuration: 0.1)
+        sleep(1)
+    }
+
+    /// The bar inside the safe area, and at these edges of it (within 2 pt).
+    private func checkBar(_ desktop: XCUIElement, at edges: [String], _ tag: String) {
+        let (size, safe, bar) = barState(desktop)
+        let limits = CGRect(x: safe.left, y: safe.top, width: size.width - safe.left - safe.right,
+                            height: size.height - safe.top - safe.bottom)
+        XCTAssertTrue(limits.insetBy(dx: -0.5, dy: -0.5).contains(bar), "\(tag): \(bar) outside the safe area \(limits)")
+        for edge in edges {
+            let gap: CGFloat
+            switch edge {
+            case "left": gap = bar.minX - limits.minX
+            case "right": gap = limits.maxX - bar.maxX
+            case "top": gap = bar.minY - limits.minY
+            default: gap = limits.maxY - bar.maxY
+            }
+            XCTAssertLessThanOrEqual(abs(gap), 2, "\(tag): \(gap) pt from the \(edge) edge (bar \(bar), safe area \(limits))")
+        }
+    }
+
     // MARK: Controls
 
     /// A, a trigger, the sticks, the D-pad, and several at once.

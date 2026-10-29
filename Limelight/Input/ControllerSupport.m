@@ -19,6 +19,31 @@
 
 static const double MOUSE_SPEED_DIVISOR = 1.25;
 
+// Artemis: in the demo, what would go to the PC goes to its record instead (UI tests)
+static void (^ArtemisDemoSink)(NSString*);
+
+static int ArtemisSendMultiControllerEvent(short controllerNumber, short activeGamepadMask,
+                                           int buttonFlags, unsigned char leftTrigger, unsigned char rightTrigger,
+                                           short leftStickX, short leftStickY, short rightStickX, short rightStickY) {
+    void (^sink)(NSString*) = ArtemisDemoSink;
+    if (sink != nil) {
+        sink([NSString stringWithFormat:@"pad 0x%04X", buttonFlags]);
+        return 0;
+    }
+    return LiSendMultiControllerEvent(controllerNumber, activeGamepadMask, buttonFlags, leftTrigger, rightTrigger,
+                                      leftStickX, leftStickY, rightStickX, rightStickY);
+}
+
+static int ArtemisSendControllerArrivalEvent(uint8_t controllerNumber, uint16_t activeGamepadMask, uint8_t type,
+                                             uint32_t supportedButtonFlags, uint16_t capabilities) {
+    void (^sink)(NSString*) = ArtemisDemoSink;
+    if (sink != nil) {
+        sink([NSString stringWithFormat:@"arrival %d 0x%04X", controllerNumber, supportedButtonFlags]);
+        return 0;
+    }
+    return LiSendControllerArrivalEvent(controllerNumber, activeGamepadMask, type, supportedButtonFlags, capabilities);
+}
+
 @implementation ControllerSupport {
     id _controllerConnectObserver;
     id _controllerDisconnectObserver;
@@ -373,7 +398,7 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
         // Arrival once (it fails until the connection is up: tried again with the next state).
         // Without multiple controllers, a connected controller already announced player 1.
         if (!_virtualArrived && (_multiController || _controllers.count == 0)) {
-            _virtualArrived = LiSendControllerArrivalEvent(_virtualNumber, [self getActiveGamepadMask], LI_CTYPE_XBOX,
+            _virtualArrived = ArtemisSendControllerArrivalEvent(_virtualNumber, [self getActiveGamepadMask], LI_CTYPE_XBOX,
                                                            PLAY_FLAG | BACK_FLAG | UP_FLAG | DOWN_FLAG | LEFT_FLAG | RIGHT_FLAG |
                                                            LB_FLAG | RB_FLAG | A_FLAG | B_FLAG | X_FLAG | Y_FLAG | SPECIAL_FLAG |
                                                            LS_CLK_FLAG | RS_CLK_FLAG,
@@ -384,7 +409,7 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
         if (!_multiController && _controllers.count > 0) {
             state = ArtemisPadMerge(state, _physicalSent);
         }
-        LiSendMultiControllerEvent(_virtualNumber, [self getActiveGamepadMask], state.buttons, state.leftTrigger, state.rightTrigger,
+        ArtemisSendMultiControllerEvent(_virtualNumber, [self getActiveGamepadMask], state.buttons, state.leftTrigger, state.rightTrigger,
                                    state.leftStickX, state.leftStickY, state.rightStickX, state.rightStickY);
     }
     [_controllerStreamLock unlock];
@@ -399,13 +424,13 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
         if (!_multiController && _controllers.count > 0) {
             // Player 1 stays, holding what the connected controllers hold
             ArtemisPadState held = _physicalSent;
-            LiSendMultiControllerEvent(0, [self getActiveGamepadMask], held.buttons, held.leftTrigger, held.rightTrigger,
+            ArtemisSendMultiControllerEvent(0, [self getActiveGamepadMask], held.buttons, held.leftTrigger, held.rightTrigger,
                                        held.leftStickX, held.leftStickY, held.rightStickX, held.rightStickY);
         }
         else {
             // At rest, and without its bit in the mask: the PC removes it (player 1 stays without
             // multiple controllers, as upstream keeps it)
-            LiSendMultiControllerEvent(_virtualNumber, [self getActiveGamepadMask], 0, 0, 0, 0, 0, 0, 0);
+            ArtemisSendMultiControllerEvent(_virtualNumber, [self getActiveGamepadMask], 0, 0, 0, 0, 0, 0, 0);
         }
         Log(LOG_I, @"On-screen gamepad gone");
     }
@@ -479,7 +504,7 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
                         rightStickY = sent.rightStickY;
                     }
                 }
-                LiSendMultiControllerEvent(_multiController ? controller.playerIndex : 0, [self getActiveGamepadMask],
+                ArtemisSendMultiControllerEvent(_multiController ? controller.playerIndex : 0, [self getActiveGamepadMask],
                                            buttonFlags, leftTrigger, rightTrigger,
                                            leftStickX, leftStickY, rightStickX, rightStickY);
             }
@@ -746,7 +771,7 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
     // Report the new controller to the host
     // NB: This will fail if the connection hasn't been fully established yet
     // and we will try again later.
-    if (LiSendControllerArrivalEvent(controller.playerIndex,
+    if (ArtemisSendControllerArrivalEvent(controller.playerIndex,
                                      [self getActiveGamepadMask],
                                      type,
                                      supportedButtonFlags,
@@ -1085,7 +1110,7 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
         // Ensure the virtual gamepad disappears to avoid confusing some games.
         // If the mouse and keyboard disconnect later, it will reappear when the
         // first OSC input is received.
-        LiSendMultiControllerEvent(0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ArtemisSendMultiControllerEvent(0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
     
     [_osc setLevel:level];
@@ -1203,6 +1228,16 @@ static ArtemisPadState ArtemisPadMerge(ArtemisPadState a, ArtemisPadState b) {
 -(NSUInteger) getConnectedGamepadCount
 {
     return _controllers.count;
+}
+
++(void (^)(NSString*)) demoSink
+{
+    return ArtemisDemoSink;
+}
+
++(void) setDemoSink:(void (^)(NSString*))demoSink
+{
+    ArtemisDemoSink = [demoSink copy];
 }
 
 -(id) initWithConfig:(StreamConfiguration*)streamConfig delegate:(id<ControllerSupportDelegate>)delegate

@@ -31,6 +31,9 @@ typedef struct {
 
 /// Artemis: sees each controller's state first and can keep it from the PC (the gamepad mouse).
 @property (nonatomic, weak) id<ArtemisGamepadFilter> gamepadFilter;
+/// Artemis: the demo desktop's record (UI tests): controllers' arrivals and states go here as
+/// text ("arrival <n> 0x<buttons>", "pad 0x<buttons>") instead of to a PC. Nil in a session.
+@property (class, nonatomic, copy, nullable) void (^demoSink)(NSString* _Nonnull event);
 
 -(id) initWithConfig:(StreamConfiguration*)streamConfig delegate:(id<ControllerSupportDelegate>)delegate;
 -(void) connectionEstablished;

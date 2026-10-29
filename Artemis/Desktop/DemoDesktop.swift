@@ -7,6 +7,7 @@
 //  and screenshots.
 //
 
+import GameController
 import QuartzCore
 import UIKit
 
@@ -36,6 +37,7 @@ final class DemoDesktopViewController: UIViewController {
         input.onChange = { [weak self] in self?.desktop.updateAccessibilityValue() }
         desktop.onDisconnect = { [weak self] in
             guard let self else { return }
+            self.controllerScript?.stop()
             let onExit = self.onExit
             self.presentingViewController?.dismiss(animated: true) { onExit() }
         }
@@ -47,11 +49,17 @@ final class DemoDesktopViewController: UIViewController {
     }
 
     private var ranGamepadScript = false
+    private var controllerScript: DemoControllerScript?
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         setNeedsUpdateOfHomeIndicatorAutoHidden()
+        // A connected controller for the UI tests (-ArtemisDemoController "<steps>"), see DemoControllerScript
+        if controllerScript == nil, let script = UserDefaults.standard.string(forKey: "ArtemisDemoController") {
+            controllerScript = DemoControllerScript(mouse: desktop.gamepadMouse, input: input)
+            controllerScript?.run(script)
+        }
         // A controller for the UI tests (-ArtemisDemoGamepad "<steps>"), see DemoGamepadScript
         guard !ranGamepadScript, let script = UserDefaults.standard.string(forKey: "ArtemisDemoGamepad") else { return }
         ranGamepadScript = true
@@ -259,5 +267,116 @@ final class DemoGamepadScript {
             elapsed += tick
             mouse.tick(tick)
         }
+    }
+}
+
+/// A connected controller for the UI tests, end to end: a GCVirtualController that a script
+/// presses, which ControllerSupport reads like any controller (its callbacks, its button mapping,
+/// the gamepad mouse) and whose arrival and states go to the demo's record ("arrival <n> 0x…",
+/// "pad 0x…") instead of to a PC. Mouse input from the gamepad mouse is recorded as usual.
+///
+/// Steps, separated by ";": `press options` (0.1 s), `hold menu 0.8`, `down a` / `up a`,
+/// `left 1 0 0.3` (the left stick at x 1, y 0 for 0.3 s, then centred), `wait 0.2`.
+/// Buttons: a b x y lb rb menu options home l3 r3.
+final class DemoControllerScript: NSObject, ControllerSupportDelegate {
+    private let mouse: GamepadMouse
+    private let input: RecordingDesktopInput
+    private var virtual: GCVirtualController?
+    private var support: ControllerSupport?
+
+    private static let buttons: [String: String] = [
+        "a": GCInputButtonA, "b": GCInputButtonB, "x": GCInputButtonX, "y": GCInputButtonY,
+        "lb": GCInputLeftShoulder, "rb": GCInputRightShoulder, "menu": GCInputButtonMenu,
+        "options": GCInputButtonOptions, "home": GCInputButtonHome,
+        "l3": GCInputLeftThumbstickButton, "r3": GCInputRightThumbstickButton,
+    ]
+
+    init(mouse: GamepadMouse, input: RecordingDesktopInput) {
+        self.mouse = mouse
+        self.input = input
+    }
+
+    func run(_ script: String) {
+        ControllerSupport.demoSink = { [weak input] event in
+            if Thread.isMainThread {
+                input?.note(event)
+            } else {
+                DispatchQueue.main.async { input?.note(event) }
+            }
+        }
+        // As a session does (StreamFrameViewController): the controllers, then the gamepad mouse
+        let support = ControllerSupport(config: StreamConfiguration(), delegate: self)
+        support.gamepadFilter = mouse
+        self.support = support
+        let configuration = GCVirtualController.Configuration()
+        configuration.elements = Set(Self.buttons.values + [GCInputLeftThumbstick, GCInputRightThumbstick,
+                                                            GCInputDirectionPad, GCInputLeftTrigger, GCInputRightTrigger])
+        configuration.isHidden = true
+        let virtual = GCVirtualController(configuration: configuration)
+        self.virtual = virtual
+        virtual.connect { [weak self] error in
+            if let error {
+                DispatchQueue.main.async { self?.input.note("controller error \(error.localizedDescription)") }
+                return
+            }
+            // ControllerSupport takes it on the connect notification; the script starts after
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.input.note("controller ready")
+                self?.play(script.split(separator: ";").map { $0.split(separator: " ").map(String.init) })
+            }
+        }
+    }
+
+    func stop() {
+        virtual?.disconnect()
+        virtual = nil
+        support?.cleanup()
+        support = nil
+        ControllerSupport.demoSink = nil
+    }
+
+    private func play(_ steps: [[String]]) {
+        guard let words = steps.first, let virtual else {
+            input.note("controller done")
+            return
+        }
+        let rest = Array(steps.dropFirst())
+        let number = { (index: Int) in words.count > index ? Double(words[index]) ?? 0 : 0 }
+        let next = { (delay: TimeInterval) in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.play(rest) }
+        }
+        let button = words.count > 1 ? Self.buttons[words[1]] : nil
+        switch words.first {
+        case "press", "hold":
+            guard let button else { return next(0) }
+            virtual.setValue(1, forButtonElement: button)
+            DispatchQueue.main.asyncAfter(deadline: .now() + (words[0] == "press" ? 0.1 : number(2))) { [weak self] in
+                self?.virtual?.setValue(0, forButtonElement: button)
+                next(0.15)
+            }
+        case "down", "up":
+            guard let button else { return next(0) }
+            virtual.setValue(words[0] == "down" ? 1 : 0, forButtonElement: button)
+            next(0.15)
+        case "left", "right":
+            let stick = words[0] == "left" ? GCInputLeftThumbstick : GCInputRightThumbstick
+            virtual.setPosition(CGPoint(x: number(1), y: number(2)), forDirectionPadElement: stick)
+            DispatchQueue.main.asyncAfter(deadline: .now() + number(3)) { [weak self] in
+                self?.virtual?.setPosition(.zero, forDirectionPadElement: stick)
+                next(0.15)
+            }
+        case "wait":
+            next(number(1))
+        default:
+            next(0)
+        }
+    }
+
+    // MARK: ControllerSupportDelegate
+
+    func gamepadPresenceChanged() {}
+    func mousePresenceChanged() {}
+    func streamExitRequested() {
+        input.note("exit requested")
     }
 }

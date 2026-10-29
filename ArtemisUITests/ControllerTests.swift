@@ -112,4 +112,83 @@ final class ControllerTests: XCTestCase {
         XCTAssertTrue(status.contains("gamepad mouse off"), "status: \(status)")
         app.terminate()
     }
+
+    // MARK: A connected controller, end to end
+
+    /// Opens the demo desktop with a connected (virtual) controller pressed by a script; the
+    /// arrival and what went to the PC once the script has finished, consecutive repeats merged.
+    private func connected(_ script: String, orientation: UIDeviceOrientation = .portrait) -> (XCUIApplication, String, String?, [String]) {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}",
+                               "-ArtemisGamepadMouse", "YES", "-ArtemisDemoController", script]
+        app.launch()
+        XCUIDevice.shared.orientation = orientation
+        XCTAssertTrue(app.buttons["computer.ENCHILADA"].waitForExistence(timeout: 15))
+        app.buttons["computer.ENCHILADA"].tap()
+        XCTAssertTrue(app.buttons["game.Desktop"].waitForExistence(timeout: 10))
+        app.buttons["game.Desktop"].tap()
+        let desktop = app.otherElements["desktop"]
+        XCTAssertTrue(desktop.waitForExistence(timeout: 10), "the desktop didn't open")
+        let finished = NSPredicate { _, _ in
+            let value = desktop.value as? String ?? ""
+            return value.contains("controller done") || value.contains("controller error")
+        }
+        let done = expectation(for: finished, evaluatedWith: nil)
+        wait(for: [done], timeout: 30)
+        let lines = (desktop.value as? String ?? "").components(separatedBy: "\n")
+        let events = Array(lines.dropFirst(2))
+        XCTAssertFalse(events.contains { $0.hasPrefix("controller error") }, "events: \(events)")
+        let arrival = events.first { $0.hasPrefix("arrival ") }
+        var sent: [String] = []
+        for event in events.drop(while: { $0 != "controller ready" }).dropFirst()
+        where event != "controller done" && !event.hasPrefix("move ") && event != sent.last {
+            sent.append(event)
+        }
+        return (app, lines.first ?? "", arrival, sent)
+    }
+
+    /// Select (the Xbox controller's View, a PlayStation controller's Share / Create) reaches the
+    /// PC as the Xbox Back button, as do Start / Menu, Xbox / Home and A, each on its own.
+    func testConnectedControllerButtons() {
+        let (app, status, arrival, sent) = connected("press options;press menu;press home;press a;press l3")
+        // The PC is told the controller has a Back button (0x0020) and a Guide button (0x0400)
+        let flags = arrival.flatMap { UInt32($0.split(separator: " ").last?.dropFirst(2) ?? "", radix: 16) } ?? 0
+        XCTAssertEqual(flags & 0x0020, 0x0020, "no Back in the arrival: \(arrival ?? "none")")
+        XCTAssertEqual(flags & 0x0410, 0x0410, "no Start or Guide in the arrival: \(arrival ?? "none")")
+        XCTAssertEqual(sent, ["pad 0x0020", "pad 0x0000", // Select: Back
+                              "pad 0x0010", "pad 0x0000", // Start / Menu
+                              "pad 0x0400", "pad 0x0000", // Xbox / Home: Guide
+                              "pad 0x1000", "pad 0x0000", // A
+                              "pad 0x0040", "pad 0x0000"], // the left stick's click
+                       "sent: \(sent)")
+        XCTAssertTrue(status.contains("gamepad mouse off"), "status: \(status)")
+        shot("\(appearance)-portrait-L-controller-3-select")
+        app.terminate()
+    }
+
+    /// Start + Select together: both reach the PC (no combo turns them into something else).
+    func testConnectedControllerStartAndSelect() {
+        let (app, _, _, sent) = connected("down options;down menu;up menu;up options")
+        XCTAssertEqual(sent, ["pad 0x0020", "pad 0x0030", "pad 0x0020", "pad 0x0000"], "sent: \(sent)")
+        app.terminate()
+    }
+
+    /// The controller as the mouse, end to end: hold Menu turns it on (the PC sees the controller
+    /// at rest), A clicks, the stick moves the pointer and Select stays with the mouse (nothing
+    /// reaches the PC, as in the Mac app); hold Menu again turns it off and Select is Back again.
+    func testConnectedControllerMouseMode() {
+        for (orientation, name) in [(UIDeviceOrientation.portrait, "portrait"), (.landscapeLeft, "landscape")] {
+            let (app, status, _, sent) = connected("hold menu 0.9;press options;press a;left 1 0 0.3;hold menu 0.9;press options",
+                                                   orientation: orientation)
+            XCTAssertEqual(sent, ["pad 0x0010", "pad 0x0000", // Menu held, then up: the mouse on, the PC sees it at rest
+                                  "down left", "up left", // A clicks; Select sent nothing
+                                  "pad 0x0000", // Menu held again: the mouse off
+                                  "pad 0x0020", "pad 0x0000"], // Select is Back again
+                           "\(name) sent: \(sent)")
+            XCTAssertTrue(status.contains("gamepad mouse off"), "\(name) status: \(status)")
+            app.terminate()
+        }
+    }
 }
+
