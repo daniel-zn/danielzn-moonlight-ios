@@ -27,7 +27,9 @@ final class ScreenshotTests: XCTestCase {
 
     private func launch(size: String, arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", textSizes[size]!] + arguments
+        app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", textSizes[size]!,
+                               // Where the bar was left by another test doesn't carry over
+                               "-ArtemisBarCenter", "{0.5, 0.92}", "-ArtemisGamepadBarCenter2", ""] + arguments
         app.launch()
         return app
     }

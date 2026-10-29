@@ -39,6 +39,8 @@ final class DesktopViewController: UIViewController {
     private let toast = UILabel()
     private let toastBackground = UIView()
     private var toastHide: DispatchWorkItem?
+    /// Notices shown this session (for the UI tests: a notice is up for 2.5 s only).
+    private var toastCount = 0
     private lazy var barHost = UIHostingController(rootView: ControlBar(session: session))
     private let interpreter = TouchInterpreter()
     /// The demo draws its own pointer; a real stream shows the PC's.
@@ -74,7 +76,8 @@ final class DesktopViewController: UIViewController {
         session = DesktopSession(title: title, mode: absolute ? .direct : .trackpad, barExpanded: pointer.showControlBar)
         let saved = UserDefaults.standard.string(forKey: "ArtemisBarCenter").map(NSCoder.cgPoint(for:))
         barCenter = saved ?? CGPoint(x: 0.5, y: 0.92)
-        gamepadBarCenter = UserDefaults.standard.string(forKey: "ArtemisGamepadBarCenter2").map(NSCoder.cgPoint(for:))
+        // Empty: not moved (the UI tests start each session with it so)
+        gamepadBarCenter = UserDefaults.standard.string(forKey: "ArtemisGamepadBarCenter2").flatMap { $0.isEmpty ? nil : NSCoder.cgPoint(for: $0) }
         self.localCursor = localCursor ? UIImageView(image: DesktopViewController.cursorImage) : nil
         super.init(nibName: nil, bundle: nil)
     }
@@ -620,6 +623,7 @@ final class DesktopViewController: UIViewController {
                             gamepadMouse.isActive ? "on" : "off")]
         lines[0] += " · edges " + Self.describe(deferredEdges)
         lines[0] += " · on-screen controller " + (session.gamepadShown ? "shown" : "hidden")
+        lines[0] += " · notices \(toastCount)"
         let exclusive = view.interactions.contains { ($0 as? GCEventInteraction).map { $0.handledEventTypes.contains(.gamepad) && !$0.receivesEventsInView } ?? false }
         lines[0] += " · controller events " + (exclusive ? "game controller only" : "shared")
         let safe = view.safeAreaInsets
@@ -1028,5 +1032,7 @@ extension DesktopViewController: GamepadMouseOutput {
         }
         toastHide = hide
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: hide)
+        toastCount += 1
+        updateAccessibilityValue()
     }
 }

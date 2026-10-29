@@ -317,7 +317,7 @@ final class OnScreenGamepadTests: XCTestCase {
         let tag = "\(appearance)-landscape-folded-bar"
         let app = XCUIApplication()
         app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
-                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"]
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}", "-ArtemisGamepadBarCenter2", ""]
         app.launch()
         XCUIDevice.shared.orientation = .landscapeLeft
         let enchilada = app.buttons["computer.ENCHILADA"]
@@ -605,7 +605,7 @@ final class OnScreenGamepadTests: XCTestCase {
                          extra: [String] = []) -> (XCUIApplication, XCUIElement) {
         let app = XCUIApplication()
         app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", size,
-                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}"] + extra
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}", "-ArtemisGamepadBarCenter2", ""] + extra
         app.launch()
         XCUIDevice.shared.orientation = orientation
         let enchilada = app.buttons["computer.ENCHILADA"]

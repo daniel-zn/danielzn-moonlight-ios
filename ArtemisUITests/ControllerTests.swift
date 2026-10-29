@@ -39,7 +39,7 @@ final class ControllerTests: XCTestCase {
     private func run(_ script: String, orientation: UIDeviceOrientation, extra: [String] = []) -> (XCUIApplication, String, [String]) {
         let app = XCUIApplication()
         app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
-                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}",
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}", "-ArtemisGamepadBarCenter2", "",
                                "-ArtemisDemoGamepad", script] + extra
         app.launch()
         XCUIDevice.shared.orientation = orientation
@@ -90,7 +90,7 @@ final class ControllerTests: XCTestCase {
             let (app, status, events) = run("hold start 0.8;left -0.7 0.7 0.4", orientation: orientation)
             XCTAssertTrue(status.contains("gamepad mouse on"), "\(name) status: \(status)")
             XCTAssertTrue(events.contains { $0.hasPrefix("move ") }, "\(name): no pointer movement")
-            XCTAssertTrue(app.staticTexts["desktop.toast"].exists, "\(name): no notice")
+            XCTAssertTrue(status.contains("notices 1"), "\(name): no notice (\(status))")
             shot("\(appearance)-\(name)-L-controller-2-on")
             app.terminate()
         }
@@ -120,7 +120,7 @@ final class ControllerTests: XCTestCase {
     private func connected(_ script: String, orientation: UIDeviceOrientation = .portrait) -> (XCUIApplication, String, String?, [String]) {
         let app = XCUIApplication()
         app.launchArguments = ["-ArtemisDemo", "YES", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
-                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}",
+                               "-ArtemisShowControlBar", "YES", "-ArtemisBarCenter", "{0.5, 0.92}", "-ArtemisGamepadBarCenter2", "",
                                "-ArtemisGamepadMouse", "YES", "-ArtemisDemoController", script]
         app.launch()
         XCUIDevice.shared.orientation = orientation
