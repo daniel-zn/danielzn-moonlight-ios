@@ -28,7 +28,6 @@
       ],
       "line": "sim-artemis",
       "timeout": 90,
-      "retries": 1,
       "select": {
         "env": "UI_TESTS",
         "always": [
