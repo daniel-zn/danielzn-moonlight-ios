@@ -424,7 +424,7 @@ final class OnScreenGamepadTests: XCTestCase {
     private func barState(_ desktop: XCUIElement) -> (size: CGSize, safe: UIEdgeInsets, bar: CGRect) {
         let text = self.status(desktop)
         func numbers(after label: String, _ count: Int) -> [CGFloat] {
-            guard let range = text.range(of: label + " ") else { return [] }
+            guard let range = text.range(of: " " + label + " ") else { return [] }
             return text[range.upperBound...].split(separator: " ").prefix(count).compactMap { Double($0) }.map { CGFloat($0) }
         }
         let safe = numbers(after: "safe", 4), bar = numbers(after: "bar frame", 4), size = numbers(after: "screen", 2)

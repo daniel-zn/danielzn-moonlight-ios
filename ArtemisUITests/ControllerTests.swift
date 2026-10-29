@@ -149,16 +149,16 @@ final class ControllerTests: XCTestCase {
     }
 
     /// Select (the Xbox controller's View, a PlayStation controller's Share / Create) reaches the
-    /// PC as the Xbox Back button, as do Start / Menu, Xbox / Home and A, each on its own.
+    /// PC as the Xbox Back button, as do Start / Menu, A and a stick's click, each on its own.
+    /// (The virtual controller has no Xbox / Home button to press.)
     func testConnectedControllerButtons() {
-        let (app, status, arrival, sent) = connected("press options;press menu;press home;press a;press l3")
-        // The PC is told the controller has a Back button (0x0020) and a Guide button (0x0400)
+        let (app, status, arrival, sent) = connected("press options;press menu;press a;press l3")
+        // The PC is told the controller has a Back button (0x0020) and Start (0x0010)
         let flags = arrival.flatMap { UInt32($0.split(separator: " ").last?.dropFirst(2) ?? "", radix: 16) } ?? 0
         XCTAssertEqual(flags & 0x0020, 0x0020, "no Back in the arrival: \(arrival ?? "none")")
-        XCTAssertEqual(flags & 0x0410, 0x0410, "no Start or Guide in the arrival: \(arrival ?? "none")")
+        XCTAssertEqual(flags & 0x0010, 0x0010, "no Start in the arrival: \(arrival ?? "none")")
         XCTAssertEqual(sent, ["pad 0x0020", "pad 0x0000", // Select: Back
                               "pad 0x0010", "pad 0x0000", // Start / Menu
-                              "pad 0x0400", "pad 0x0000", // Xbox / Home: Guide
                               "pad 0x1000", "pad 0x0000", // A
                               "pad 0x0040", "pad 0x0000"], // the left stick's click
                        "sent: \(sent)")

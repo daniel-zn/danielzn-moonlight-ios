@@ -277,7 +277,7 @@ final class DemoGamepadScript {
 ///
 /// Steps, separated by ";": `press options` (0.1 s), `hold menu 0.8`, `down a` / `up a`,
 /// `left 1 0 0.3` (the left stick at x 1, y 0 for 0.3 s, then centred), `wait 0.2`.
-/// Buttons: a b x y lb rb menu options home l3 r3.
+/// Buttons: a b x y lb rb menu options l3 r3.
 final class DemoControllerScript: NSObject, ControllerSupportDelegate {
     private let mouse: GamepadMouse
     private let input: RecordingDesktopInput
@@ -287,7 +287,7 @@ final class DemoControllerScript: NSObject, ControllerSupportDelegate {
     private static let buttons: [String: String] = [
         "a": GCInputButtonA, "b": GCInputButtonB, "x": GCInputButtonX, "y": GCInputButtonY,
         "lb": GCInputLeftShoulder, "rb": GCInputRightShoulder, "menu": GCInputButtonMenu,
-        "options": GCInputButtonOptions, "home": GCInputButtonHome,
+        "options": GCInputButtonOptions,
         "l3": GCInputLeftThumbstickButton, "r3": GCInputRightThumbstickButton,
     ]
 
@@ -309,8 +309,9 @@ final class DemoControllerScript: NSObject, ControllerSupportDelegate {
         support.gamepadFilter = mouse
         self.support = support
         let configuration = GCVirtualController.Configuration()
+        // The touch controller has no Home button, and no D-pad next to a left stick
         configuration.elements = Set(Self.buttons.values + [GCInputLeftThumbstick, GCInputRightThumbstick,
-                                                            GCInputDirectionPad, GCInputLeftTrigger, GCInputRightTrigger])
+                                                            GCInputLeftTrigger, GCInputRightTrigger])
         configuration.isHidden = true
         let virtual = GCVirtualController(configuration: configuration)
         self.virtual = virtual
