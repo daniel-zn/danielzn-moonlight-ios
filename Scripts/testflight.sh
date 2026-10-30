@@ -15,8 +15,8 @@
 # xcodebuild resolves the OpenSSL package with the system git (-scmProvider system).
 # The build number is the commit count, so every upload from a new commit is higher than the last.
 # --validate-only signs the export and checks every bundle in it without uploading.
-# ARTEMIS_MULTICAST=1 signs with Signing/Artemis.entitlements (the multicast entitlement, so Wake-on-LAN
-# can broadcast). Only once Apple has granted it and the profile has been made again: README, "Waking a PC".
+# The app signs with Signing/Artemis.entitlements (the target's CODE_SIGN_ENTITLEMENTS): the multicast
+# entitlement Apple granted, so Wake-on-LAN can broadcast. The export checks it's in the signed app.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -37,14 +37,12 @@ BUNDLE=com.danielzn.artemis
 BUILD=$(git rev-list --count HEAD)
 OUT=build/testflight
 rm -rf "$OUT" && mkdir -p "$OUT"
-ENTITLEMENTS=()
-[[ "${ARTEMIS_MULTICAST:-0}" == 1 ]] && ENTITLEMENTS=(CODE_SIGN_ENTITLEMENTS=Signing/Artemis.entitlements)
 AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 
 echo "Archiving build $BUILD…"
 xcodebuild archive -project Moonlight.xcodeproj -scheme Moonlight -scmProvider system -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$OUT/Artemis.xcarchive" -derivedDataPath "$OUT/dd" \
-  CURRENT_PROJECT_VERSION="$BUILD" DEVELOPMENT_TEAM=6G4QGZ2Q95 CODE_SIGN_STYLE=Automatic ${ENTITLEMENTS[@]+"${ENTITLEMENTS[@]}"} \
+  CURRENT_PROJECT_VERSION="$BUILD" DEVELOPMENT_TEAM=6G4QGZ2Q95 CODE_SIGN_STYLE=Automatic \
   "${AUTH[@]}" > "$OUT/archive.log" 2>&1 || { tail -30 "$OUT/archive.log"; exit 1; }
 
 cat > "$OUT/ExportOptions.plist" <<PLIST
@@ -73,6 +71,9 @@ for file in Orbix-Regular.otf OFL.txt; do
   [[ -f "$APP_IN_ARCHIVE/$file" ]] || { echo "FAIL: $file isn't in the app"; exit 1; }
 done
 echo "The app contains the Orbix font and its license"
+# Uploads too: the archived app carries the multicast entitlement (the export below checks it again)
+[[ "$(codesign -d --entitlements - --xml "$APP_IN_ARCHIVE" 2>/dev/null | plutil -extract com.apple.developer.networking.multicast raw - 2>/dev/null)" == true ]] \
+  || { echo "FAIL: the multicast entitlement isn't in the archived app"; exit 1; }
 
 echo "Exporting ($DESTINATION)…"
 xcodebuild -exportArchive -archivePath "$OUT/Artemis.xcarchive" -exportOptionsPlist "$OUT/ExportOptions.plist" \
@@ -98,10 +99,8 @@ done
 codesign -d --entitlements - --xml "$APP" 2>/dev/null > "$OUT/entitlements.plist"
 plutil -p "$OUT/entitlements.plist"
 grep -q "<string>6G4QGZ2Q95.$BUNDLE</string>" "$OUT/entitlements.plist" || fail "application-identifier"
-if [[ "${ARTEMIS_MULTICAST:-0}" == 1 ]]; then
-  [[ "$(plutil -extract com.apple.developer.networking.multicast raw "$OUT/entitlements.plist" 2>/dev/null)" == true ]] \
-    || fail "the multicast entitlement isn't in the signed app"
-fi
+[[ "$(plutil -extract com.apple.developer.networking.multicast raw "$OUT/entitlements.plist" 2>/dev/null)" == true ]] \
+  || fail "the multicast entitlement isn't in the signed app"
 [[ "$(plutil -extract get-task-allow raw "$OUT/entitlements.plist" 2>/dev/null || echo false)" == false ]] \
   || fail "get-task-allow is true (a development signature)"
 security cms -D -i "$APP/embedded.mobileprovision" > "$OUT/profile.plist"

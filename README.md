@@ -70,21 +70,17 @@ times, on ports 9, 7, 47009 and Moonlight's ports:
   ones). It reaches a sleeping PC whose network adapter answers ARP for it (Windows' ARP offload; Enchilada's Intel
   I219-V has it on, with Wake on Magic Packet) or whose address the iPhone still has cached.
 - **Broadcast** to 255.255.255.255 and each local network's broadcast address. Since iOS 14.5 that needs the
-  restricted entitlement `com.apple.developer.networking.multicast`; without it `sendto()` fails and the log says
-  so ("iOS blocks broadcasts without the … entitlement").
+  restricted entitlement `com.apple.developer.networking.multicast`, which Artemis has (below). If a broadcast
+  `sendto()` still fails (a build without it, or Local Network access turned off for Artemis), the log says so and
+  the unicast packets go out anyway.
 
-Artemis doesn't have the entitlement yet. `Signing/Artemis.entitlements` has it, ready, but it isn't used: signing
-fails until Apple grants it for the team. Once Apple approves the request (made at
-https://developer.apple.com/contact/request/networking-multicast, for bundle `com.danielzn.artemis`), switching it on
-takes two minutes:
-
-1. developer.apple.com → Certificates, Identifiers & Profiles → Identifiers → `com.danielzn.artemis` → Additional
-   Capabilities → tick **Multicast Networking** → Save. (This invalidates the "Artemis App Store" profile.)
-2. Make the profile again with the capability in it: `mercurius-agent secret run --env ASC_KEY_ID,ASC_ISSUER_ID,ASC_KEY_P8 -- Scripts/asc.py profile`.
-3. Ship with it: `ARTEMIS_MULTICAST=1 Scripts/testflight.sh` (it signs with `Signing/Artemis.entitlements` and
-   checks the entitlement is in the signed app; `--validate-only` first to try it without uploading). To keep it
-   on, make `ARTEMIS_MULTICAST` default to 1 in `Scripts/testflight.sh` and set `CODE_SIGN_ENTITLEMENTS =
-   Signing/Artemis.entitlements` on the Moonlight target.
+Artemis is signed with the entitlement: Apple granted it for `com.danielzn.artemis` (requested at
+https://developer.apple.com/contact/request/networking-multicast), the App ID has **Multicast Networking** ticked, and
+the Moonlight target's `CODE_SIGN_ENTITLEMENTS = Signing/Artemis.entitlements` (every configuration, so Simulator and
+development builds match). `Scripts/testflight.sh` checks that the archived and the exported app carry it. The
+"Artemis App Store" profile must include the capability: when it's made again (it expires with the certificate), use
+`mercurius-agent secret run --env ASC_KEY_ID,ASC_ISSUER_ID,ASC_KEY_P8 -- Scripts/asc.py profile`, after the
+capability is on the App ID.
 
 ## Building
 * Install Xcode from the [App Store page](https://apps.apple.com/us/app/xcode/id497799835)

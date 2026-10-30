@@ -3,7 +3,8 @@
 <plist version="1.0">
 <dict>
 	<!-- Lets Wake-on-LAN broadcast its magic packet (iOS 14.5+ blocks UDP broadcast and multicast
-	     without it). Apple grants it per team on request; it's off until then: README, "Waking a PC". -->
+	     without it). Apple granted it for com.danielzn.artemis; the app target signs with this file:
+	     README, "Waking a PC". -->
 	<key>com.apple.developer.networking.multicast</key>
 	<true/>
 </dict>

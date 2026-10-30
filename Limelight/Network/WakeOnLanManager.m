@@ -6,12 +6,14 @@
 //  Copyright (c) 2015 Moonlight Stream. All rights reserved.
 //
 //  Artemis: the magic packet goes straight to every address the PC is known by (unicast) as
-//  well as to the broadcast addresses, a few times over. Since iOS 14.5 an app may only send
-//  broadcasts with the com.apple.developer.networking.multicast entitlement (Artemis doesn't
-//  have it yet: README, "Waking a PC"), and without it sendto() to a broadcast address fails.
-//  A unicast magic packet still reaches a sleeping PC whose network adapter answers ARP for it
-//  (Windows' ARP offload) or whose address this iPhone still has in its neighbour cache: the
-//  adapter wakes on the magic pattern whatever the packet's destination address.
+//  well as to the broadcast addresses (255.255.255.255 and each local network's), a few times
+//  over. Since iOS 14.5 an app may only send broadcasts with the
+//  com.apple.developer.networking.multicast entitlement; Artemis is signed with it
+//  (Signing/Artemis.entitlements, README "Waking a PC"). Without it, or without Local Network
+//  access, sendto() to a broadcast address fails, and the log says why. The unicast packets go
+//  out either way: they reach a sleeping PC whose network adapter answers ARP for it (Windows'
+//  ARP offload) or whose address this iPhone still has in its neighbour cache: the adapter wakes
+//  on the magic pattern whatever the packet's destination address.
 //
 
 #import "WakeOnLanManager.h"
@@ -136,7 +138,7 @@ static const useconds_t roundGapMicroseconds = 400000;
                 int code = errno;
                 NSString* note = @"";
                 if (broadcast && (code == EHOSTUNREACH || code == EPERM || code == EACCES || code == ENETUNREACH)) {
-                    note = @" - iOS blocks broadcasts without the com.apple.developer.networking.multicast entitlement";
+                    note = @" - iOS blocks broadcasts without the com.apple.developer.networking.multicast entitlement or Local Network access";
                 }
                 [errors addObject:[NSString stringWithFormat:@"%@: %s (errno %d)%@", rawAddress, strerror(code), code, note]];
             }
