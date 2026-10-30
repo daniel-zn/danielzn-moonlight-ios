@@ -72,7 +72,7 @@ for file in Orbix-Regular.otf OFL.txt; do
 done
 echo "The app contains the Orbix font and its license"
 # Uploads too: the archived app carries the multicast entitlement (the export below checks it again)
-[[ "$(codesign -d --entitlements - --xml "$APP_IN_ARCHIVE" 2>/dev/null | plutil -extract com.apple.developer.networking.multicast raw - 2>/dev/null)" == true ]] \
+[[ "$(codesign -d --entitlements - --xml "$APP_IN_ARCHIVE" 2>/dev/null | plutil -extract 'com\.apple\.developer\.networking\.multicast' raw - 2>/dev/null)" == true ]] \
   || { echo "FAIL: the multicast entitlement isn't in the archived app"; exit 1; }
 
 echo "Exporting ($DESTINATION)…"
@@ -99,7 +99,7 @@ done
 codesign -d --entitlements - --xml "$APP" 2>/dev/null > "$OUT/entitlements.plist"
 plutil -p "$OUT/entitlements.plist"
 grep -q "<string>6G4QGZ2Q95.$BUNDLE</string>" "$OUT/entitlements.plist" || fail "application-identifier"
-[[ "$(plutil -extract com.apple.developer.networking.multicast raw "$OUT/entitlements.plist" 2>/dev/null)" == true ]] \
+[[ "$(plutil -extract 'com\.apple\.developer\.networking\.multicast' raw "$OUT/entitlements.plist" 2>/dev/null)" == true ]] \
   || fail "the multicast entitlement isn't in the signed app"
 [[ "$(plutil -extract get-task-allow raw "$OUT/entitlements.plist" 2>/dev/null || echo false)" == false ]] \
   || fail "get-task-allow is true (a development signature)"
