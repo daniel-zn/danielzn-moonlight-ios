@@ -10,7 +10,8 @@
       "inputs": [
         "X1Kit"
       ],
-      "timeout": 30
+      "line": "build",
+      "timeout": 10
     },
     {
       "name": "ui",
